@@ -25,6 +25,9 @@ runs:
           echo "ANDROID_AVD_HOME=$build_directory/avd"
           echo "ANDROID_USER_HOME=$build_directory/android-user"
           echo "ANDROID_EMULATOR_HOME=$build_directory/android-user"
+          # Emulator 37 Netsim Wi-Fi callbacks can abort when a sibling AVD exits.
+          # Keep legacy guest Wi-Fi; compression integration tests need no radio simulation.
+          echo "ANDROID_EMULATOR_FEATURES=-WiFiPacketStream"
           echo "GRADLE_USER_HOME=$gradle_root"
           echo "ZSTANDARD_FLUTTER_PROFILE=$flutter_profile"
         } >> "$GITHUB_ENV"

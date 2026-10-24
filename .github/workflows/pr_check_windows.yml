@@ -116,6 +116,23 @@ jobs:
         shell: cmd
         run: call flutter test integration_test/windows_integration_test.dart -d windows
 
+      - name: Diagnose native test build after failure
+        if: failure()
+        working-directory: zstandard_windows/example
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $cache = 'build/windows/x64/CMakeCache.txt'
+          if (-not (Test-Path -LiteralPath $cache)) {
+            Write-Host 'No configured native build is available for diagnosis.'
+            exit 0
+          }
+          $commands = @(Get-Content -LiteralPath $cache | Where-Object { $_.StartsWith('CMAKE_COMMAND:INTERNAL=') })
+          if ($commands.Count -ne 1) { throw 'Native CMake command is ambiguous.' }
+          $cmake = $commands[0].Split('=', 2)[1]
+          & $cmake --build build/windows/x64 --config Debug --target zstandard_windows_test --verbose
+          exit $LASTEXITCODE
+
   check_windows_test_from_pub_cache:
     name: Test Windows (from pub cache)
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
@@ -225,6 +242,23 @@ jobs:
         working-directory: zstandard/example
         shell: cmd
         run: call flutter test integration_test/ -d windows
+
+      - name: Diagnose native test build after failure
+        if: failure()
+        working-directory: zstandard_windows/example
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $cache = 'build/windows/x64/CMakeCache.txt'
+          if (-not (Test-Path -LiteralPath $cache)) {
+            Write-Host 'No configured native build is available for diagnosis.'
+            exit 0
+          }
+          $commands = @(Get-Content -LiteralPath $cache | Where-Object { $_.StartsWith('CMAKE_COMMAND:INTERNAL=') })
+          if ($commands.Count -ne 1) { throw 'Native CMake command is ambiguous.' }
+          $cmake = $commands[0].Split('=', 2)[1]
+          & $cmake --build build/windows/x64 --config Debug --target zstandard_windows_test --verbose
+          exit $LASTEXITCODE
 
   check_windows_publish_dry_run:
     name: Dry Run Publish Windows
