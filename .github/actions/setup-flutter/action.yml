@@ -16,7 +16,9 @@ runs:
         flutter-version: ${{ inputs.flutter-version }}
         architecture: ${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}
         cache-path: '${{ runner.tool_cache }}/zstandard-flutter-v2/:channel:-:version:-:arch:'
-        cache: true
+        # Persistent runners already retain this versioned SDK on disk.
+        # Remote SDK archives can spend the job deadline transferring gigabytes.
+        cache: false
         pub-cache: false
 
     - name: Isolate Flutter settings for concurrent Unix jobs

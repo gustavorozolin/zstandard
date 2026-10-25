@@ -6,6 +6,12 @@ with `self-hosted, codex, Linux`; Apple jobs use `self-hosted, macOS, ARM64`.
 Windows jobs use the separate `setup-flutter-windows` action, which selects Git
 Bash and verifies its downloaded jq executable.
 
+The SDK stays in each persistent runner's versioned tool directory. Setup reuses
+that installation and downloads it only when missing. GitHub's remote SDK cache
+is disabled: transferring multi-gigabyte archives delayed setup and post-job
+cleanup enough to threaten CI deadlines on the shared Apple runners. Pub's
+existing local cache and the requested SDK version/architecture are preserved.
+
 On Unix, subsequent `flutter` commands use a job-owned settings profile through
 a private launcher. SwiftPM/CocoaPods selection therefore cannot overwrite the
 operator's Flutter settings or another runner's selection. The existing pub
