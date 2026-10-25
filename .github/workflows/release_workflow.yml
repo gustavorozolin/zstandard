@@ -305,9 +305,8 @@ jobs:
 
   cli_build_windows_precompiled_libs:
     name: Build CLI libraries - Windows
-    runs-on:
-      group: vypdev
-      labels: [self-hosted, Windows, X64]
+    # Both MSVC architectures are preinstalled on this standard image.
+    runs-on: windows-2025
     timeout-minutes: 60
     needs: [update_files, cli_build_linux_precompiled_libs]
     outputs:
@@ -319,17 +318,14 @@ jobs:
         with:
           ref: ${{ needs.cli_build_linux_precompiled_libs.outputs.commit }}
           fetch-depth: 0
-      - uses: ./.github/actions/setup-flutter-windows
-        with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
       - name: Build x64 and ARM64 libraries with the installed Visual Studio
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
-          $installations = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -format json | ConvertFrom-Json
+          $installations = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 Microsoft.VisualStudio.Component.VC.Tools.ARM64 -format json | ConvertFrom-Json
           $installation = $installations | Select-Object -First 1
-          if (-not $installation) { throw 'No installed Visual Studio C++ toolchain was found.' }
+          if (-not $installation) { throw 'Visual Studio with both x64 and ARM64 C++ tools is required.' }
           $vsPath = $installation.installationPath
           $vsMajor = ([Version]$installation.installationVersion).Major
           $generator = (cmake --help | Select-String -AllMatches -Pattern "Visual Studio $vsMajor \d{4}").Matches | ForEach-Object Value | Sort-Object -Unique | Select-Object -First 1
@@ -339,11 +335,11 @@ jobs:
           $x64Build = Join-Path $root 'zstandard_cli/builders/windows_x64/build'
           $armBuild = Join-Path $root 'zstandard_cli/builders/windows_arm/build'
           Remove-Item $x64Build,$armBuild -Recurse -Force -ErrorAction SilentlyContinue
-          cmake -S zstandard_cli/builders/windows_x64 -B $x64Build -G $generator -A x64
+          cmake -S zstandard_cli/builders/windows_x64 -B $x64Build -G $generator -A x64 "-DCMAKE_GENERATOR_INSTANCE=$vsPath"
           if ($LASTEXITCODE -ne 0) { throw 'Windows x64 CMake configuration failed.' }
           cmake --build $x64Build --config Release --parallel
           if ($LASTEXITCODE -ne 0) { throw 'Windows x64 build failed.' }
-          cmake -S zstandard_cli/builders/windows_arm -B $armBuild -G $generator -A ARM64
+          cmake -S zstandard_cli/builders/windows_arm -B $armBuild -G $generator -A ARM64 "-DCMAKE_GENERATOR_INSTANCE=$vsPath"
           if ($LASTEXITCODE -ne 0) { throw 'Windows ARM64 CMake configuration failed.' }
           cmake --build $armBuild --config Release --parallel
           if ($LASTEXITCODE -ne 0) { throw 'Windows ARM64 build failed.' }

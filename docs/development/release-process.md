@@ -55,6 +55,9 @@ preparation; do not bump or generate them locally before starting that phase.
    release branch and passes its exact commit to the next job. Unchanged
    outputs can be retried; a moved remote rejects a push. No package is
    published while this build chain is running.
+   The Windows CLI producer uses GitHub's standard `windows-2025` image with
+   both MSVC toolsets; it does not need Flutter to compile the C libraries.
+   Windows application validation runs on the trusted self-hosted desktops.
 5. All candidate tests check out the final native-build commit. Static,
    formatting, package, platform release-build and integration gates must pass.
    The final gate rejects a moved release tip and uploads
