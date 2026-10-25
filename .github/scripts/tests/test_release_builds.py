@@ -181,6 +181,8 @@ if args[:2]==['build','linux']:
     (build/'bundle/lib').mkdir(parents=True)
     (build/'bundle/lib/libzstandard_linux_plugin.so').write_bytes(b'fixture plugin')
     (build/'CMakeCache.txt').touch()
+    Path('main.dart').touch()
+    Path('flutter-target').write_text(str(Path('main.dart').resolve()))
 elif args and args[0]=='test':
     search=os.environ.get('LD_LIBRARY_PATH','').split(os.pathsep)
     with open(os.environ['TRACE'],'a') as trace:
@@ -189,21 +191,40 @@ elif args and args[0]=='test':
         sys.exit(32)
 ''')
         flutter.chmod(0o700)
-        for name in ['cmake', 'ctest']:
-            (tools / name).write_text('#!/bin/sh\nexit 0\n')
-            (tools / name).chmod(0o700)
+        (tools / 'cmake').write_text('''#!/usr/bin/env python3
+import json,os,sys
+from pathlib import Path
+if '--build' in sys.argv:
+    target=Path(os.environ['NATIVE_TARGET']).read_text()
+    if not Path(target).is_file():
+        sys.exit(33)
+    with open(os.environ['TRACE'],'a') as trace:
+        trace.write(json.dumps({'kind':'native-build'})+'\\n')
+''')
+        (tools / 'cmake').chmod(0o700)
+        (tools / 'ctest').write_text('#!/bin/sh\nexit 0\n')
+        (tools / 'ctest').chmod(0o700)
         (self.root / 'scripts').mkdir()
-        (self.root / 'scripts/test_linux_integration.sh').write_text('exit 0\n')
+        # Flutter's integration driver leaves generated_config.cmake pointing
+        # at a test listener that it removes on exit. A subsequent native build
+        # must not try to assemble that retired target.
+        (self.root / 'scripts/test_linux_integration.sh').write_text(
+            'printf "%s\\n" "$PWD/zstandard_linux/example/retired-listener.dart" '
+            '> zstandard_linux/example/flutter-target\n')
         trace = self.root / 'trace'
-        self.env.update(PATH=str(tools) + os.pathsep + self.env['PATH'], TRACE=str(trace))
+        self.env.update(PATH=str(tools) + os.pathsep + self.env['PATH'], TRACE=str(trace),
+                        NATIVE_TARGET=str(self.root / 'zstandard_linux/example/flutter-target'))
         script = next(step['run'] for step in WORKFLOW['jobs']['candidate_linux']['steps']
                       if step.get('name') == 'Build, run native tests and run integration tests')
         result = self.run_command(script)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         calls = [json.loads(line) for line in trace.read_text().splitlines()]
-        self.assertEqual(len(calls), 1)
-        self.assertEqual(calls[0]['search'][0],
+        vm_tests = [call for call in calls if call['kind'] == 'vm-test']
+        self.assertEqual(len(vm_tests), 1)
+        self.assertEqual(vm_tests[0]['search'][0],
                          str(self.root / 'zstandard_linux/example/build/linux/x64/release/bundle/lib'))
+        self.assertEqual(sum(call['kind'] == 'native-build' for call in calls), 1)
+        self.assertTrue(Path(self.env['NATIVE_TARGET']).read_text().endswith('/retired-listener.dart\n'))
 
     def test_release_admission_rejects_other_branches_before_checkout(self):
         script = WORKFLOW['jobs']['validate']['steps'][0]['with']['script']

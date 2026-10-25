@@ -508,13 +508,15 @@ jobs:
           test -n "$plugin_library"
           plugin_directory="$(cd "$(dirname "$plugin_library")" && pwd)"
           (cd zstandard_linux && LD_LIBRARY_PATH="$plugin_directory${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" flutter test)
-          bash scripts/test_linux_integration.sh
           cmake_build_dir=$(find zstandard_linux/example/build/linux -type f -name CMakeCache.txt -not -path '*/_deps/*' -print | sed 's#/CMakeCache.txt$##' | sort | tail -n 1)
           test -n "$cmake_build_dir"
           cmake_build_dir="$(cd "$cmake_build_dir" && pwd)"
           (cd zstandard_linux/example && ZSTANDARD_LINUX_ENABLE_TESTS=1 cmake -S linux -B "$cmake_build_dir")
           cmake --build "$cmake_build_dir" --target zstandard_linux_test --parallel
           ctest --test-dir "$cmake_build_dir" --output-on-failure
+          # Flutter integration leaves generated_config.cmake pointing at a
+          # temporary test listener; finish native builds before it is retired.
+          bash scripts/test_linux_integration.sh
 
   candidate_web:
     name: Candidate Web build and integration
