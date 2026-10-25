@@ -17,6 +17,8 @@ permissions:
 
 env:
   FLUTTER_VERSION: '3.47.2'
+  MAIN_BRANCH: ${{ vars.MAIN_BRANCH || 'master' }}
+  RELEASE_TREE: ${{ vars.RELEASE_TREE || 'release' }}
 
 jobs:
   validate_tag:

@@ -10,6 +10,7 @@ import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
+from urllib.parse import quote
 import zipfile
 
 
@@ -37,7 +38,7 @@ class CandidateEvidenceTests(unittest.TestCase):
         (self.root / 'template').mkdir()
         self.addCleanup(patch.stopall)
         patch.dict(os.environ, environment).start()
-        patch.dict(os.environ, GITHUB_REPOSITORY='fixture/zstandard').start()
+        patch.dict(os.environ, GITHUB_REPOSITORY='fixture/zstandard', RELEASE_TREE='release').start()
         self.git('init', '-q')
         self.git('config', 'user.name', 'Fixture')
         self.git('config', 'user.email', 'fixture@example.invalid')
@@ -86,7 +87,7 @@ class CandidateEvidenceTests(unittest.TestCase):
         return {
             f'commits/{self.production}/pulls?per_page=100': [self.pull],
             'issues/7': self.issue(),
-            'actions/workflows/release_workflow.yml/runs?branch=release%2F1.6.0&event=workflow_dispatch&status=success&per_page=100': dict(workflow_runs=[self.run]),
+            f'actions/workflows/release_workflow.yml/runs?branch={quote(self.operation["sourceBranch"], safe="")}&event=workflow_dispatch&status=success&per_page=100': dict(workflow_runs=[self.run]),
             'actions/runs/42/artifacts?per_page=100': dict(artifacts=[dict(id=9, name='release-candidate-1.6.0', expired=False)]),
             'actions/artifacts/9/zip': self.archive(),
         }
@@ -98,6 +99,16 @@ class CandidateEvidenceTests(unittest.TestCase):
 
     def test_success_requires_both_successful_ci_and_the_owned_promotion(self):
         self.assertEqual(self.verify(), (7, 'operation-123'))
+
+    def test_configured_release_prefix_and_owned_production_are_supported(self):
+        self.operation.update(sourceBranch='deployment/release/1.6.0', productionBranch='production/stable')
+        self.pull['head']['ref'] = self.operation['sourceBranch']
+        self.pull['base']['ref'] = self.operation['productionBranch']
+        self.run['head_branch'] = self.operation['sourceBranch']
+        with patch.dict(os.environ, RELEASE_TREE='deployment/release'):
+            self.assertEqual(self.verify(), (7, 'operation-123'))
+        with self.assertRaises(candidate.InvalidCandidate):
+            self.verify()
 
     def test_failed_skipped_fork_and_unrelated_workflow_runs_cannot_attest(self):
         original = copy.deepcopy(self.run)
@@ -163,10 +174,12 @@ class CandidateEvidenceTests(unittest.TestCase):
 
     def test_record_reads_the_actual_candidate_and_attempt(self):
         output = self.root / 'record.json'
-        with patch.dict(os.environ, GITHUB_REF_NAME='release/1.6.0', GITHUB_RUN_ID='42', GITHUB_RUN_ATTEMPT='1'):
-            with patch.object(candidate, 'git', side_effect=self.git):
-                candidate.record('1.6.0', '7', output)
-        self.assertEqual(json.loads(output.read_text()), {**self.receipt, 'sourceSha': self.production})
+        for prefix in ['release', 'deployment/release']:
+            with self.subTest(prefix=prefix):
+                with patch.dict(os.environ, RELEASE_TREE=prefix, GITHUB_REF_NAME=f'{prefix}/1.6.0', GITHUB_RUN_ID='42', GITHUB_RUN_ATTEMPT='1'):
+                    with patch.object(candidate, 'git', side_effect=self.git):
+                        candidate.record('1.6.0', '7', output)
+                self.assertEqual(json.loads(output.read_text()), {**self.receipt, 'sourceSha': self.production})
 
 
 if __name__ == '__main__':

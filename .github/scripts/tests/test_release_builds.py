@@ -114,13 +114,17 @@ class ReleaseBuildTests(unittest.TestCase):
 
     def test_release_admission_rejects_other_branches_before_checkout(self):
         script = WORKFLOW['jobs']['validate']['steps'][0]['with']['script']
-        for ref, expected in [('refs/heads/release/1.6.0', 0), ('refs/heads/master', 1),
-                              ('refs/heads/develop', 1), ('refs/tags/v1.6.0', 1),
-                              ('refs/heads/release/1.5.0', 1)]:
-            with self.subTest(ref=ref):
+        cases = [(prefix, ref, expected)
+                 for prefix in ['release', 'deployment/release']
+                 for ref, expected in [(f'refs/heads/{prefix}/1.6.0', 0), ('refs/heads/master', 1),
+                                       ('refs/heads/develop', 1), ('refs/tags/v1.6.0', 1),
+                                       (f'refs/heads/{prefix}/1.5.0', 1)]]
+        cases.append(('deployment/release', 'refs/heads/release/1.6.0', 1))
+        for prefix, ref, expected in cases:
+            with self.subTest(prefix=prefix, ref=ref):
                 env = {**self.env, 'MODE': 'prepare', 'OPERATION_ID': '', 'VERSION': '1.6.0',
                        'ISSUE': '7', 'TITLE': 'Fixture', 'CHANGELOG': 'Fixture',
-                       'RELEASE_REF': ref, 'RELEASE_TREE': 'release'}
+                       'RELEASE_REF': ref, 'RELEASE_TREE': prefix}
                 result = subprocess.run(['node', '-e', 'globalThis.core={setFailed:()=>{process.exitCode=1;}};\n' + script],
                                         env=env, text=True, capture_output=True, timeout=10)
                 self.assertEqual(result.returncode, expected, result.stderr)

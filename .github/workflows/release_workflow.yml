@@ -45,6 +45,7 @@ env:
   # This version is installed on Linux through setup-flutter and verified on
   # the persistent Apple Silicon/Windows runners by the local setup actions.
   FLUTTER_VERSION: '3.47.2'
+  RELEASE_TREE: ${{ vars.RELEASE_TREE || 'release' }}
   EMSDK_REF: 'a36df02dc438e8b02f91122a4c62eeecb6784272'
   EMSCRIPTEN_VERSION: '3.1.69'
 
@@ -119,11 +120,8 @@ jobs:
           VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          if [[ ! "$GITHUB_REF_NAME" =~ ^release/[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "This workflow only runs from release/x.y.z branches; got $GITHUB_REF_NAME" >&2
-            exit 1
-          fi
-          if [[ "${GITHUB_REF_NAME#release/}" != "$VERSION" ]]; then
+          git check-ref-format "refs/heads/$GITHUB_REF_NAME"
+          if [[ "$GITHUB_REF_NAME" != "$RELEASE_TREE/$VERSION" ]]; then
             echo "Version $VERSION does not match branch $GITHUB_REF_NAME" >&2
             exit 1
           fi

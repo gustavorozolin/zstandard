@@ -40,6 +40,12 @@ def git(*args):
     return result.stdout.strip()
 
 
+def release_branch(version):
+    branch = f'{os.environ.get("RELEASE_TREE") or "release"}/{version}'
+    git('check-ref-format', f'refs/heads/{branch}')
+    return branch
+
+
 def repository():
     value = os.environ.get('GITHUB_REPOSITORY', '')
     require(re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', value),
@@ -82,7 +88,7 @@ def operation_for_promotion(pull, issue, repo, version, source, production):
             and state.get('operationId') == operation_id
             and state.get('version') == version
             and state.get('tag') == f'v{version}'
-            and state.get('sourceBranch') == f'release/{version}'
+            and state.get('sourceBranch') == release_branch(version)
             and state.get('sourceSha') == source
             and state.get('productionSha') == production
             and state.get('publicationWorkflow') == 'release_workflow.yml'
@@ -128,7 +134,7 @@ def validate_receipt(receipt, run, repo, version, source, tree, issue):
 def record(version, issue_text, output):
     require(issue_text.isdecimal() and int(issue_text) > 0,
             'A positive launcher issue is required.')
-    require(os.environ.get('GITHUB_REF_NAME') == f'release/{version}',
+    require(os.environ.get('GITHUB_REF_NAME') == release_branch(version),
             'Evidence can only be recorded on the matching release branch.')
     receipt = dict(schemaVersion=1, repository=repository(), version=version,
                    sourceSha=git('rev-parse', 'HEAD'), treeSha=git('rev-parse', 'HEAD^{tree}'),
@@ -151,7 +157,7 @@ def verify(version, source, production, api=None):
     issue_text = MARKER.findall(pull.get('body') or '')[0][1]
     issue = api.read(f'issues/{issue_text}')
     launcher, operation_id = operation_for_promotion(pull, issue, repo, version, source, production)
-    branch = f'release/{version}'
+    branch = release_branch(version)
     runs = api.read('actions/workflows/release_workflow.yml/runs'
                     f'?branch={quote(branch, safe="")}&event=workflow_dispatch&status=success&per_page=100')
     tree = git('rev-parse', f'{source}^{{tree}}')

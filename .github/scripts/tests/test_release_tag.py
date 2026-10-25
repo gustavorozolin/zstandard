@@ -50,12 +50,13 @@ class ReleaseTagTests(unittest.TestCase):
         self.git('push', '-q', 'origin', branch)
         return branch
 
-    def classify(self, tag='v1.6.0', prefix='hotfix'):
+    def classify(self, tag='v1.6.0', prefix='hotfix', production='master', release_prefix='release'):
         return subprocess.run(['bash', str(SCRIPT)], cwd=self.repository,
                               env={**self.environment, 'GITHUB_REF_NAME': tag,
                                    'GITHUB_OUTPUT': str(self.output),
                                    'GITHUB_STEP_SUMMARY': str(self.root / 'summary'),
-                                   'HOTFIX_TREE': prefix},
+                                   'HOTFIX_TREE': prefix, 'MAIN_BRANCH': production,
+                                   'RELEASE_TREE': release_prefix},
                               capture_output=True, text=True, timeout=15)
 
     def test_accepted_release_production_merge_can_enter_publication_validation(self):
@@ -73,6 +74,43 @@ class ReleaseTagTests(unittest.TestCase):
         self.git('tag', 'v1.6.0')
         self.assertNotEqual(self.classify().returncode, 0)
         self.assertEqual(self.output.read_text(), '')
+
+    def test_configured_production_and_release_prefix_accept_the_owned_merge(self):
+        production = 'production/stable'
+        self.git('checkout', '-qb', production)
+        self.git('push', '-q', 'origin', production)
+        branch = self.candidate('deployment/release')
+        self.git('checkout', '-q', production)
+        self.git('merge', '-q', '--no-ff', branch, '-m', 'accepted production')
+        self.git('push', '-q', 'origin', production)
+        self.git('tag', 'v1.6.0')
+        result = self.classify(production=production, release_prefix='deployment/release')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('kind=release\n', self.output.read_text())
+
+    def test_master_acceptance_cannot_replace_configured_production_acceptance(self):
+        production = 'production/stable'
+        self.git('push', '-q', 'origin', f'HEAD:{production}')
+        branch = self.candidate('release')
+        self.git('checkout', '-q', 'master')
+        self.git('merge', '-q', '--no-ff', branch, '-m', 'only accepted on master')
+        self.git('push', '-q', 'origin', 'master')
+        self.git('tag', 'v1.6.0')
+        self.assertNotEqual(self.classify(production=production).returncode, 0)
+        self.assertEqual(self.output.read_text(), '')
+
+    def test_configured_production_hotfix_preserves_nonpublication(self):
+        production = 'production/stable'
+        self.git('checkout', '-qb', production)
+        branch = self.candidate('hotfix')
+        self.git('checkout', '-q', production)
+        self.git('merge', '-q', '--no-ff', branch, '-m', 'accepted hotfix')
+        self.git('push', '-q', 'origin', production)
+        self.git('tag', 'v1.6.0')
+        result = self.classify(production=production)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('kind=hotfix\n', self.output.read_text())
+        self.assertIn('does not publish hotfix packages', (self.root / 'summary').read_text())
 
     def test_accepted_default_and_custom_hotfixes_preserve_nonpublication(self):
         for prefix in ['hotfix', 'maintenance/hotfix']:
