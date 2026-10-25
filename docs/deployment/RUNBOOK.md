@@ -13,8 +13,10 @@
    are healthy, and trusted Linux/macOS/Windows runners are online.
 5. Run release contract tests, metadata checks and PR platform CI. No tag or
    registry credential is needed for these checks.
-6. Review SDK compatibility and choose the release type in a separate Release
-   issue. Maintenance changes do not authorize deployment.
+6. Record the release type and SDK compatibility in the Release issue. For a
+   patch, select `Patch` and `Automatic`; from `v1.5.0`, Copilot resolves `1.5.1`.
+   Announce Dart 3.12 / Flutter 3.44 minimums in the release notes. Maintenance
+   changes alone do not authorize deployment.
 
 Do not add `deploy`, create tags/releases or run publication to test readiness.
 Publishing to pub.dev is immutable and is not a readiness test.
@@ -26,16 +28,34 @@ Copilot's linked branch and readiness label. Once deployment is explicitly
 authorized, its launcher starts preparation. Follow the issue's control center
 through candidate validation and the production promotion PR.
 
+All publishable generation and compilation belongs to the deployment's
+`prepare` phase. Do not prepare package versions, WebAssembly or CLI libraries
+on a developer machine for later upload. The workflow generates metadata and
+Web assets, then compiles and commits macOS, Linux and Windows libraries in
+sequence. Each job consumes the preceding commit; the complete set is retained
+in the final candidate's Git tree before candidate validation or publication.
+See the [artifact map](../development/release-process.md#artifact-storage-and-handoff).
+
 All platform jobs validate one exact candidate. Its commit/tree evidence is
 uploaded before promotion is delegated to Copilot. After the protected PR
 merges, Copilot tags the accepted production SHA. Do not manually tag the
 release tip: production and candidate commits can differ while their tested
 content must be identical.
 
+CI and candidate example-app builds remain validation hosts. Flutter platform
+packages ship native source; the distributed precompiled libraries belong to
+the CLI, and the generated Web assets belong to the Web implementation.
+
 The tag publisher verifies Copilot state, promotion ownership, successful CI
 evidence and metadata before reaching the protected `pub.dev` environment.
 Approve that environment after reviewing the accepted candidate. Publication
 uses GitHub OIDC; no persistent pub token is required.
+
+No platform is published during the native build chain. Once all builds and
+candidate gates pass, the ten package uploads run in dependency order and wait
+for indexing. This is not an atomic registry transaction: if publication stops,
+use Copilot recovery for the same accepted candidate/tag to continue missing
+versions, rather than rebuilding and uploading platforms independently.
 
 After public verification of all ten packages, the product workflow delegates
 GitHub Release creation and reconciliation to installed Copilot actions. Do not
@@ -72,5 +92,5 @@ regenerate bindings if the public header changed, regenerate WebAssembly and
 rerun every platform gate. Apple CocoaPods sync scripts create ignored
 compatibility copies; SwiftPM uses the canonical repository target directly.
 
-See [Release process](../development/release-process.md) and
-[`SECURITY.md`](../../SECURITY.md).
+See [Release process](../development/release-process.md) and the
+[security guide](../guides/security.md).
