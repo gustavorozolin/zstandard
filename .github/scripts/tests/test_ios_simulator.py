@@ -48,6 +48,16 @@ class SimulatorTests(unittest.TestCase):
                 simulator.start()
             self.assertEqual((pathlib.Path(folder) / "output").read_text(), f"device-id={CREATED}\n")
 
+    @patch.object(simulator.subprocess, "run")
+    def test_boot_readiness_timeout_fails_and_preserves_owned_device(self, command):
+        devices = {"devices": {RUNTIME: [{"name": "iPhone 16", "deviceTypeIdentifier": KIND, "isAvailable": True}]}}
+        command.side_effect = [Mock(stdout=json.dumps(devices)), Mock(stdout=CREATED), Mock(), subprocess.TimeoutExpired("bootstatus", 600)]
+        with tempfile.TemporaryDirectory() as folder, self.prepare(folder):
+            with self.assertRaises(subprocess.TimeoutExpired):
+                simulator.start()
+            self.assertEqual((pathlib.Path(folder) / "output").read_text(), f"device-id={CREATED}\n")
+        self.assertNotIn(EXISTING, str(command.call_args_list))
+
 
 if __name__ == "__main__":
     unittest.main()

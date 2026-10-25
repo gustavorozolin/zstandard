@@ -11,9 +11,14 @@ concurrency:
 
 permissions:
   contents: read
+  actions: read
+  issues: read
+  pull-requests: read
 
 env:
   FLUTTER_VERSION: '3.47.2'
+  MAIN_BRANCH: ${{ vars.MAIN_BRANCH || 'master' }}
+  RELEASE_TREE: ${{ vars.RELEASE_TREE || 'release' }}
 
 jobs:
   validate_tag:
@@ -26,6 +31,8 @@ jobs:
       version: ${{ steps.context.outputs.version }}
       commit: ${{ steps.context.outputs.commit }}
       kind: ${{ steps.context.outputs.kind }}
+      issue: ${{ steps.candidate.outputs.issue }}
+      operation-id: ${{ steps.candidate.outputs.operation-id }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
@@ -41,7 +48,18 @@ jobs:
           HOTFIX_TREE: ${{ vars.HOTFIX_TREE || 'hotfix' }}
         run: bash scripts/check_release_tag.sh
 
+      - name: Require successful preparation and accepted Copilot promotion
+        if: steps.context.outputs.kind == 'release'
+        id: candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.context.outputs.version }}
+          SOURCE_SHA: ${{ steps.context.outputs.source-commit }}
+          PRODUCTION_SHA: ${{ steps.context.outputs.commit }}
+        run: python3 scripts/release_candidate.py verify "$VERSION" "$SOURCE_SHA" "$PRODUCTION_SHA"
+
       - name: Validate package metadata and generated artifacts
+        if: steps.context.outputs.kind == 'release'
         env:
           VERSION: ${{ steps.context.outputs.version }}
         run: |
@@ -152,7 +170,7 @@ jobs:
           done
 
   github_release:
-    name: Create immutable GitHub release
+    name: Confirm publication through Copilot
     runs-on:
       group: vypdev
       labels: [self-hosted, codex, Linux]
@@ -160,6 +178,12 @@ jobs:
     needs: [validate_tag, verify]
     permissions:
       contents: write
+      issues: write
+      pull-requests: write
+    concurrency:
+      group: copilot-deployment-${{ github.repository_id }}-${{ needs.validate_tag.outputs.issue }}
+      cancel-in-progress: false
+      queue: max
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
@@ -175,17 +199,60 @@ jobs:
               zstandard_web/blob/zstd_worker.js zstandard_web/blob/zstd.wasm
           } > checksums.txt
 
-      - name: Create release from the validated tag
+      - name: Create or verify accepted GitHub Release
+        uses: vypdev/copilot@v3
+        with:
+          single-action: create_release
+          single-action-issue: ${{ needs.validate_tag.outputs.issue }}
+          issue-workflow-profile: ${{ vars.COPILOT_ISSUE_WORKFLOW_PROFILE || '' }}
+          single-action-operation-id: ${{ needs.validate_tag.outputs.operation-id }}
+          single-action-version: ${{ needs.validate_tag.outputs.version }}
+          token: ${{ secrets.PAT }}
+
+      - name: Attach checksums to the verified release
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.PAT }}
         run: |
           set -euo pipefail
-          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" checksums.txt --repo "$GITHUB_REPOSITORY" --clobber
-          else
-            gh release create "$GITHUB_REF_NAME" checksums.txt \
-              --repo "$GITHUB_REPOSITORY" \
-              --verify-tag \
-              --generate-notes \
-              --title "Release $GITHUB_REF_NAME"
-          fi
+          gh release upload "$GITHUB_REF_NAME" checksums.txt --repo "$GITHUB_REPOSITORY" --clobber
+
+      - name: Confirm publication and start configured reconciliation
+        uses: vypdev/copilot@v3
+        with:
+          single-action: published_deployment_action
+          single-action-issue: ${{ needs.validate_tag.outputs.issue }}
+          issue-workflow-profile: ${{ vars.COPILOT_ISSUE_WORKFLOW_PROFILE || '' }}
+          single-action-operation-id: ${{ needs.validate_tag.outputs.operation-id }}
+          single-action-version: ${{ needs.validate_tag.outputs.version }}
+          merge-queue-check-attestations: ${{ vars.MERGE_QUEUE_CHECK_ATTESTATIONS || '[]' }}
+          token: ${{ secrets.PAT }}
+
+  report_failure:
+    name: Record package publication failure
+    needs: [validate_tag, publish, verify, github_release]
+    if: ${{ failure() && needs.validate_tag.outputs.kind == 'release' && needs.validate_tag.outputs.issue != '' }}
+    runs-on:
+      group: vypdev
+      labels: [self-hosted, codex, Linux]
+    timeout-minutes: 5
+    concurrency:
+      group: copilot-deployment-${{ github.repository_id }}-${{ needs.validate_tag.outputs.issue }}
+      cancel-in-progress: false
+      queue: max
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ needs.validate_tag.outputs.commit }}
+          persist-credentials: false
+      - uses: vypdev/copilot@v3
+        with:
+          single-action: failed_deployment_action
+          single-action-issue: ${{ needs.validate_tag.outputs.issue }}
+          issue-workflow-profile: ${{ vars.COPILOT_ISSUE_WORKFLOW_PROFILE || '' }}
+          single-action-operation-id: ${{ needs.validate_tag.outputs.operation-id }}
+          single-action-version: ${{ needs.validate_tag.outputs.version }}
+          single-action-message: Package publication failed. Review ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} and rerun this immutable tag workflow.
+          token: ${{ secrets.PAT }}

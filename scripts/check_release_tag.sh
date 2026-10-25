@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Read-only classification; only the exact prepared release tip may publish.
+# Read-only classification; package publication requires accepted production.
 set -euo pipefail
 tag="${GITHUB_REF_NAME:?Missing tag context}"
 version="${tag#v}"
@@ -10,11 +10,19 @@ fi
 commit="$(git rev-parse --verify HEAD)"
 tag_commit="$(git rev-parse --verify "refs/tags/$tag^{commit}")"
 [[ "$commit" == "$tag_commit" ]] || { echo 'Checkout differs from the immutable tag.' >&2; exit 1; }
-release="release/$version"
+release="${RELEASE_TREE:-release}/$version"
+production="${MAIN_BRANCH:-master}"
+git check-ref-format "refs/heads/$release"
+git check-ref-format "refs/heads/$production"
+production_ref="refs/remotes/origin/$production"
+production_refspec="refs/heads/$production:$production_ref"
 if git ls-remote --exit-code --heads origin "refs/heads/$release" >/dev/null; then
   git fetch --no-tags origin "refs/heads/$release:refs/remotes/origin/$release"
-  [[ "$commit" == "$(git rev-parse "refs/remotes/origin/$release")" ]] || {
-    echo 'Tag does not match the prepared release branch tip.' >&2; exit 1;
+  source_commit="$(git rev-parse "refs/remotes/origin/$release")"
+  git fetch --no-tags origin "$production_refspec"
+  git merge-base --is-ancestor "$source_commit" "$commit" &&
+    git merge-base --is-ancestor "$commit" "$production_ref" || {
+    echo 'Release tag is not an accepted production descendant of its candidate.' >&2; exit 1;
   }
   kind=release
 else
@@ -25,18 +33,20 @@ else
   }
   git fetch --no-tags origin \
     "refs/heads/$hotfix:refs/remotes/origin/$hotfix" \
-    'refs/heads/master:refs/remotes/origin/master'
+    "$production_refspec"
   git merge-base --is-ancestor "refs/remotes/origin/$hotfix" "$commit" &&
-    git merge-base --is-ancestor "$commit" refs/remotes/origin/master || {
+    git merge-base --is-ancestor "$commit" "$production_ref" || {
       echo 'Hotfix tag is not an accepted production descendant of its candidate.' >&2; exit 1;
     }
   # Preserve the existing Copilot hotfix contract: GitHub release only.
   kind=hotfix
+  source_commit="$(git rev-parse "refs/remotes/origin/$hotfix")"
 fi
 {
   printf 'version=%s\n' "$version"
   printf 'commit=%s\n' "$commit"
   printf 'kind=%s\n' "$kind"
+  printf 'source-commit=%s\n' "$source_commit"
 } >> "${GITHUB_OUTPUT:?Missing output context}"
 printf 'Verified %s tag: %s\n' "$kind" "$tag"
 if [[ "$kind" == hotfix && -n "${GITHUB_STEP_SUMMARY:-}" ]]; then

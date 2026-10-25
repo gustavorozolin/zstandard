@@ -36,7 +36,9 @@ def start():
     with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
         output.write(f"device-id={device_id}\n")
     subprocess.run(["xcrun", "simctl", "boot", device_id], check=True, timeout=30)
-    subprocess.run(["xcrun", "simctl", "bootstatus", device_id, "-b"], check=True, timeout=120)
+    # A fresh runtime may still be migrating data after two minutes on a shared
+    # runner. Wait for actual readiness, with a finite cold-boot deadline.
+    subprocess.run(["xcrun", "simctl", "bootstatus", device_id, "-b"], check=True, timeout=600)
 
 
 if __name__ == "__main__":
