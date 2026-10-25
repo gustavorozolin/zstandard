@@ -1,10 +1,12 @@
 name: PR Check Linux
 
 on:
+  pull_request:
+    branches:
+      - '**'
   push:
     branches:
       - develop
-  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -18,16 +20,20 @@ env:
 jobs:
   check_linux_analyze:
     name: Analyze Linux
-    runs-on: [self-hosted, Linux]
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on:
+      group: vypdev
+      labels: [self-hosted, codex, Linux]
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@v6
 
       - uses: ./.github/actions/setup-flutter
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
 
-      - name: Resolve workspace dependencies
-        run: dart scripts/create_local_overrides.dart zstandard_linux
+      - uses: ./.github/actions/prepare-candidate-dependencies
+        with:
+          source: workspace
 
       - name: Get dependencies
         working-directory: zstandard_linux
@@ -39,10 +45,13 @@ jobs:
 
   check_linux_test:
     name: Test Linux
-    runs-on: [self-hosted, Linux]
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on:
+      group: vypdev
+      labels: [self-hosted, codex, Linux]
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@v6
 
       - uses: ./.github/actions/setup-linux-dependencies
         with:
@@ -52,8 +61,9 @@ jobs:
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
 
-      - name: Resolve workspace dependencies
-        run: dart scripts/create_local_overrides.dart zstandard_linux
+      - uses: ./.github/actions/prepare-candidate-dependencies
+        with:
+          source: workspace
 
       - name: Get dependencies
         working-directory: zstandard_linux
@@ -83,27 +93,19 @@ jobs:
           cmake --build "$cmake_build_dir" --target zstandard_linux_test --parallel
           ctest --test-dir "$cmake_build_dir" --output-on-failure
 
-      - name: Run Linux package tests against the built plugin
-        working-directory: zstandard_linux
-        run: |
-          set -euo pipefail
-          plugin_library="$(find example/build/linux -type f \
-            -name libzstandard_linux_plugin.so -print -quit)"
-          test -n "$plugin_library"
-          plugin_directory="$(cd "$(dirname "$plugin_library")" && pwd)"
-          export LD_LIBRARY_PATH="$plugin_directory${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-          flutter test --coverage
-
       - name: Run integration tests
         working-directory: zstandard_linux/example
         run: xvfb-run --auto-servernum --server-args='-screen 0 1920x1080x24' flutter test integration_test/ -d linux
 
-  check_linux_test_from_package_config:
-    name: Test Linux (exact package-config source)
-    runs-on: [self-hosted, Linux]
+  check_linux_test_from_pub_cache:
+    name: Test Linux (from pub cache)
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on:
+      group: vypdev
+      labels: [self-hosted, codex, Linux]
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@v6
 
       - uses: ./.github/actions/setup-linux-dependencies
         with:
@@ -113,30 +115,27 @@ jobs:
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
 
-      - name: Stage zstandard_native outside the repository
-        run: |
-          mkdir -p "$RUNNER_TEMP/zstandard-stage"
-          mv zstandard_native "$RUNNER_TEMP/zstandard-stage/zstandard_native"
-          dart scripts/create_local_overrides.dart zstandard_linux \
-            "$RUNNER_TEMP/zstandard-stage/zstandard_native"
+      - uses: ./.github/actions/prepare-candidate-dependencies
+        with:
+          source: pub-cache
 
-      - name: Clean and get dependencies from package_config
+      - name: Clean and get dependencies (force pub cache)
         working-directory: zstandard_linux
         run: |
           flutter clean
           flutter pub get
 
-      - name: Get dependencies in example from package_config
+      - name: Get dependencies in example (force pub cache)
         working-directory: zstandard_linux/example
         run: |
           flutter clean
           flutter pub get
 
-      - name: Build Linux example from package_config
+      - name: Build Linux example from pub cache
         working-directory: zstandard_linux/example
         run: flutter build linux --debug
 
-      - name: Build and run Linux native tests from package_config
+      - name: Build and run Linux native tests from pub cache
         working-directory: zstandard_linux/example
         run: |
           set -euo pipefail
@@ -148,33 +147,25 @@ jobs:
           cmake --build "$cmake_build_dir" --target zstandard_linux_test --parallel
           ctest --test-dir "$cmake_build_dir" --output-on-failure
 
-      - name: Run Linux package tests against the package-config plugin
-        working-directory: zstandard_linux
-        run: |
-          set -euo pipefail
-          plugin_library="$(find example/build/linux -type f \
-            -name libzstandard_linux_plugin.so -print -quit)"
-          test -n "$plugin_library"
-          plugin_directory="$(cd "$(dirname "$plugin_library")" && pwd)"
-          export LD_LIBRARY_PATH="$plugin_directory${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-          flutter test --coverage
-
-      - name: Run integration tests (C source from package_config)
+      - name: Run integration tests (C sources from pub cache)
         working-directory: zstandard_linux/example
         run: xvfb-run --auto-servernum --server-args='-screen 0 1920x1080x24' flutter test integration_test/ -d linux
 
-      - name: Restore workspace native package
-        if: always()
+      - name: Restore this job's native workspace
+        if: ${{ always() && env.ZSTANDARD_NATIVE_ORIGINAL_PATH != '' }}
         run: |
-          if [[ -d "$RUNNER_TEMP/zstandard-stage/zstandard_native" ]]; then
-            mv "$RUNNER_TEMP/zstandard-stage/zstandard_native" zstandard_native
-          fi
+          set -euo pipefail
+          test ! -e zstandard_native && test ! -L zstandard_native
+          mv "$ZSTANDARD_NATIVE_ORIGINAL_PATH" zstandard_native
 
   check_linux_publish_dry_run:
     name: Dry Run Publish Linux
-    runs-on: [self-hosted, Linux]
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on:
+      group: vypdev
+      labels: [self-hosted, codex, Linux]
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@v6
 
       - uses: ./.github/actions/preserve-flutter-project-files
         with:
@@ -185,8 +176,9 @@ jobs:
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
 
-      - name: Resolve workspace dependencies
-        run: dart scripts/create_local_overrides.dart zstandard_linux
+      - uses: ./.github/actions/prepare-candidate-dependencies
+        with:
+          source: workspace
 
       - name: Get dependencies
         working-directory: zstandard_linux

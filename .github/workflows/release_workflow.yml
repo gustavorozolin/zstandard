@@ -45,7 +45,9 @@ env:
 jobs:
   update_files:
     name: Prepare release candidate
-    runs-on: [self-hosted, macOS, ARM64]
+    runs-on:
+      group: vypdev
+      labels: [self-hosted, macOS, ARM64]
     timeout-minutes: 60
     permissions:
       contents: write
@@ -83,7 +85,7 @@ jobs:
           fi
 
       - name: Verify preinstalled Flutter
-        uses: ./.github/actions/setup-preinstalled-flutter
+        uses: ./.github/actions/setup-flutter
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
 
@@ -202,7 +204,9 @@ jobs:
 
   cli_build_macos_precompiled_libs:
     name: Build CLI libraries - macOS universal
-    runs-on: [self-hosted, macOS, ARM64]
+    runs-on:
+      group: vypdev
+      labels: [self-hosted, macOS, ARM64]
     timeout-minutes: 60
     needs: [update_files]
     permissions:
@@ -253,7 +257,9 @@ jobs:
 
   cli_build_linux_precompiled_libs:
     name: Build CLI libraries - Linux
-    runs-on: [self-hosted, Linux]
+    runs-on:
+      group: vypdev
+      labels: [self-hosted, codex, Linux]
     timeout-minutes: 60
     needs: [update_files, cli_build_macos_precompiled_libs]
     permissions:
@@ -283,10 +289,14 @@ jobs:
           cmake --build zstandard_cli/builders/linux_x64/build --config Release --parallel
           mv zstandard_cli/builders/linux_x64/build/libzstandard_linux.so \
             zstandard_cli/lib/src/bin/libzstandard_linux_x64.so
-          cmake -S zstandard_cli/builders/linux_arm -B zstandard_cli/builders/linux_arm/build \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE=zstandard_cli/builders/linux_arm/arm64-toolchain.cmake
-          cmake --build zstandard_cli/builders/linux_arm/build --config Release --parallel
+          (
+            # Host development headers must not override the AArch64 sysroot.
+            unset CPATH LIBRARY_PATH PKG_CONFIG_PATH PKG_CONFIG_SYSROOT_DIR CMAKE_PREFIX_PATH
+            cmake -S zstandard_cli/builders/linux_arm -B zstandard_cli/builders/linux_arm/build \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_TOOLCHAIN_FILE=zstandard_cli/builders/linux_arm/arm64-toolchain.cmake
+            cmake --build zstandard_cli/builders/linux_arm/build --config Release --parallel
+          )
           mv zstandard_cli/builders/linux_arm/build/libzstandard_linux.so \
             zstandard_cli/lib/src/bin/libzstandard_linux_arm64.so
           x64_machine="$(readelf -h zstandard_cli/lib/src/bin/libzstandard_linux_x64.so | sed -n 's/^ *Machine: *//p')"
@@ -308,7 +318,9 @@ jobs:
 
   cli_build_windows_precompiled_libs:
     name: Build CLI libraries - Windows
-    runs-on: [self-hosted, Windows, X64]
+    runs-on:
+      group: vypdev
+      labels: [self-hosted, Windows, X64]
     timeout-minutes: 60
     needs: [update_files, cli_build_linux_precompiled_libs]
     permissions:
@@ -323,7 +335,7 @@ jobs:
         env:
           RELEASE_BRANCH: ${{ github.ref_name }}
         run: git pull --ff-only origin $env:RELEASE_BRANCH
-      - uses: ./.github/actions/setup-preinstalled-flutter-windows
+      - uses: ./.github/actions/setup-flutter-windows
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
       - name: Build x64 and ARM64 libraries with the installed Visual Studio
@@ -371,7 +383,9 @@ jobs:
 
   candidate_static_checks:
     name: Candidate static and package checks
-    runs-on: [self-hosted, Linux]
+    runs-on:
+      group: vypdev
+      labels: [self-hosted, codex, Linux]
     timeout-minutes: 45
     needs: [update_files, cli_build_windows_precompiled_libs]
     steps:
@@ -406,7 +420,9 @@ jobs:
 
   candidate_android:
     name: Candidate Android - AGP 9 and legacy
-    runs-on: [self-hosted, Linux]
+    runs-on:
+      group: vypdev
+      labels: [self-hosted, codex, Linux]
     timeout-minutes: 120
     needs: [update_files, cli_build_windows_precompiled_libs]
     steps:
@@ -461,7 +477,9 @@ jobs:
 
   candidate_linux:
     name: Candidate Linux build and integration
-    runs-on: [self-hosted, Linux]
+    runs-on:
+      group: vypdev
+      labels: [self-hosted, codex, Linux]
     timeout-minutes: 60
     needs: [update_files, cli_build_windows_precompiled_libs]
     steps:
@@ -493,7 +511,9 @@ jobs:
 
   candidate_web:
     name: Candidate Web build and integration
-    runs-on: [self-hosted, Linux]
+    runs-on:
+      group: vypdev
+      labels: [self-hosted, codex, Linux]
     timeout-minutes: 90
     needs: [update_files, cli_build_windows_precompiled_libs]
     steps:
@@ -504,6 +524,7 @@ jobs:
       - uses: ./.github/actions/setup-linux-dependencies
         with:
           desktop: 'true'
+          browser: 'true'
       - uses: ./.github/actions/setup-flutter
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
@@ -512,7 +533,8 @@ jobs:
         with:
           chrome-version: stable
           install-chromedriver: true
-          install-dependencies: true
+          install-dependencies: false
+          no-sudo: true
       - name: Build and run Web integration tests
         env:
           CHROME_EXECUTABLE: ${{ steps.chrome.outputs.chrome-path }}
@@ -527,7 +549,9 @@ jobs:
 
   candidate_windows:
     name: Candidate Windows build and integration
-    runs-on: [self-hosted, Windows, X64]
+    runs-on:
+      group: vypdev
+      labels: [self-hosted, Windows, X64]
     timeout-minutes: 75
     needs: [update_files, cli_build_windows_precompiled_libs]
     steps:
@@ -535,7 +559,7 @@ jobs:
         with:
           ref: ${{ github.ref }}
           fetch-depth: 0
-      - uses: ./.github/actions/setup-preinstalled-flutter-windows
+      - uses: ./.github/actions/setup-flutter-windows
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
       - name: Build and run Windows tests
@@ -592,7 +616,9 @@ jobs:
 
   candidate_apple:
     name: Candidate Apple (${{ matrix.platform }}, ${{ matrix.dependency_manager }})
-    runs-on: [self-hosted, macOS, ARM64]
+    runs-on:
+      group: vypdev
+      labels: [self-hosted, macOS, ARM64]
     timeout-minutes: 90
     concurrency:
       group: zstandard-apple-flutter-toolchain
@@ -613,7 +639,7 @@ jobs:
         with:
           package: zstandard_${{ matrix.platform }}
           mode: save
-      - uses: ./.github/actions/setup-preinstalled-flutter
+      - uses: ./.github/actions/setup-flutter
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
       - name: Select dependency manager and local native source
@@ -660,10 +686,18 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "$PLATFORM" == ios ]]; then
-            chmod +x scripts/manage_ios_simulator.sh
-            ./scripts/manage_ios_simulator.sh start
-            trap './scripts/manage_ios_simulator.sh stop; rm -f zstandard_ios/example/pubspec_overrides.yaml' EXIT
-            device_id=$(./scripts/manage_ios_simulator.sh device-id)
+            simulator_output="$(mktemp "$RUNNER_TEMP/zstandard-release-simulator.XXXXXX")"
+            cleanup_simulator() {
+              device_id="$(sed -n 's/^device-id=//p' "$simulator_output")"
+              if [[ "$device_id" =~ ^[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}$ ]]; then
+                xcrun simctl shutdown "$device_id" 2>/dev/null || true
+                xcrun simctl delete "$device_id"
+              fi
+              rm -f "$simulator_output" zstandard_ios/example/pubspec_overrides.yaml
+            }
+            trap cleanup_simulator EXIT
+            GITHUB_OUTPUT="$simulator_output" python3 .github/scripts/start_ios_simulator.py
+            device_id="$(sed -n 's/^device-id=//p' "$simulator_output")"
             (cd zstandard_ios/example && bash ../../scripts/run_with_timeout.sh 900 flutter test integration_test/ios_integration_test.dart -d "$device_id" --reporter expanded)
           else
             trap 'rm -f zstandard_macos/example/pubspec_overrides.yaml' EXIT
@@ -685,7 +719,9 @@ jobs:
 
   ready_to_tag:
     name: Release candidate ready to tag
-    runs-on: ubuntu-latest
+    runs-on:
+      group: vypdev
+      labels: [self-hosted, codex, Linux]
     timeout-minutes: 10
     needs:
       - update_files
@@ -703,6 +739,10 @@ jobs:
         with:
           ref: ${{ github.ref }}
           fetch-depth: 0
+
+      - uses: ./.github/actions/setup-flutter
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
 
       - name: Verify exact candidate at the remote branch tip
         env:

@@ -35,7 +35,7 @@ uses its PAT for OWNER, MEMBER, or COLLABORATOR actors.
   publishes.
 - `publish_workflow.yml` (**Publish Tagged Release**) runs only for a stable
   `vX.Y.Z` tag, validates that it points to the matching release-branch tip,
-  publishes all packages with OIDC on GitHub-hosted Ubuntu, verifies pub.dev,
+  publishes all packages with OIDC on the trusted self-hosted Linux runners, verifies pub.dev,
   and creates the GitHub release.
 - `integrate_release.yml` (**Integrate Published Release**) is a separate
   manual workflow. It verifies the completed publication and opens reviewed
@@ -69,3 +69,70 @@ publication contract; `scripts/build_web_wasm.sh` regenerates Web artifacts.
 
 See [Testing](testing.md), [Self-hosted CI](self-hosted-ci.md), and
 [Release process](release-process.md).
+
+### Self-hosted Linux runner contract
+
+The Linux workflows target the repository labels `[self-hosted, Linux]`. The runner account must be able to use passwordless `sudo` so the local composite action at [`.github/actions/setup-linux-dependencies/action.yml`](../../.github/actions/setup-linux-dependencies/action.yml) can install the required packages.
+
+The release workflow enables the action's `arm64` option, which installs the
+`aarch64-linux-gnu` cross compiler before producing the Linux ARM64 CLI
+artifact; it does not rely on a manually prepared compiler on the runner.
+
+The action installs the common native toolchain (`build-essential`, Clang, CMake, Ninja, `pkg-config`, and `curl`). Desktop jobs additionally install GTK and Xvfb; coverage jobs install `lcov` and `bc`.
+
+Before installing anything, the action repairs an interrupted Debian package
+transaction with `dpkg --configure -a` and `apt-get -f install`, then runs the
+installation under a host-local lock and verifies the result with
+`apt-get check`. This is required because self-hosted runners preserve their
+package database between jobs; a cancelled job must not make the next check
+fail before the project is even built. If recovery itself fails on a runner,
+inspect `dpkg --audit` and the package-manager logs on that host.
+
+Android runners must also provide:
+
+- Android SDK with `platform-tools` and the emulator on the SDK path.
+- Java 17. `/dev/kvm` is optional because the current workflow explicitly uses software emulation.
+- Network access for the API 30 `aosp_atd` x86_64 system image used by the emulator launcher. Android ATD is intentionally used because it removes background services that are irrelevant to these tests and reduces CPU/memory pressure on the software-only runner.
+
+The Android job builds the example APK before booting the emulator. The Linux job builds the example application before running its integration tests. The Web job installs a matching Chrome/ChromeDriver pair, builds the example, and runs the `flutter drive` integration suite under Xvfb. A missing dependency or failed build is an explicit failure; platform integration tests are not silently skipped in CI.
+
+Android integration tests verify non-empty payloads, exact
+`decompress(compress(input))` round-trips, empty input, corruption handling,
+all documented compression levels, and deterministic property-based cases.
+The Android instrumentation suite repeats the round-trip and invalid-frame
+checks directly through JNI against the same shared library loaded by Dart
+FFI. The level-22 test uses a small payload because the CI emulator is
+software-only; large-content behavior is covered separately.
+
+PR checks pin Flutter 3.47.2. This is intentional: the organisation-level `FLUTTER_VERSION` variable previously selected Flutter 3.41.4, which is below the minimum required by the current root and Android packages.
+
+Apple workflows use the self-hosted ARM64 Mac runner and validate both native dependency managers. iOS simulators are booted through `simctl` without opening the Simulator UI; the iOS job invokes the single integration file explicitly because the example intentionally keeps all iOS checks in one test process. macOS tests run the built app in the runner's logged-in graphical session. Windows uses self-hosted X64 runners and requires a Windows desktop session plus Visual Studio/CMake for native builds and launched integration tests.
+
+### Self-hosted Windows runner contract
+
+Windows jobs target `[self-hosted, Windows, X64]`. The workflow installs and caches the pinned Flutter SDK on each runner, then enables Windows desktop support and verifies CMake. Each runner must provide a Visual Studio C++ desktop toolchain and an interactive desktop session because Flutter's Windows integration tests launch the compiled example application.
+
+The Windows workflow builds and tests the implementation package from the repository and from the exact candidate in a private Pub-cache-shaped tree. Each path runs the native C++ zstd round-trip tests, Dart package tests, and launched Flutter integration tests. A separate job runs the federated `zstandard/example` application to verify the public plugin entry point on Windows.
+
+
+## Unpublished API candidates
+
+The integrity audit adds `ZstandardNativeCodec` and bounded decompression to
+packages whose current published 1.5.0 versions do not contain those APIs.
+All PR jobs resolve matched monorepo dependencies through the reviewed
+`prepare-candidate-dependencies` action. Native matrices retain workspace
+and `pub-cache` source layouts: the latter copies only tracked candidate
+files into a job-private `hosted/pub.dev/zstandard_native-<version>` tree and
+a separate Swift package root, then hides the workspace native package.
+This tests discovery outside the checkout; it is not evidence of a new
+pub.dev publication. The interface and platform dependencies remain matched
+to the candidate through generated local overrides. Originals are restored
+from this job's private backup after native checks.
+
+Seven filesystem regression tests cover 14 distinct inputs: workspace and
+private-cache success, four invalid source values, missing CI output, five
+malformed versions, tracked source drift and an escaping tracked symlink.
+They exercise the actual Dart staging helper. The platform matrices continue
+to build and launch their real native hosts; these fixtures replace none of
+those checks. Release preparation updates all package versions and minimum
+inter-package dependencies together before any immutable tag or publication.

@@ -18,7 +18,10 @@ env:
 jobs:
   dart_packages:
     name: Analyze and test ${{ matrix.package }}
-    runs-on: ubuntu-latest
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on:
+      group: vypdev
+      labels: [self-hosted, codex, Linux]
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -37,14 +40,11 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
 
-      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+      - uses: ./.github/actions/setup-flutter
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
-          cache: true
 
-      - name: Resolve monorepo dependencies
-        run: dart scripts/create_local_overrides.dart "${{ matrix.package }}"
+      - uses: ./.github/actions/prepare-candidate-dependencies
 
       - name: Get dependencies
         working-directory: ${{ matrix.package }}
@@ -72,7 +72,10 @@ jobs:
 
   coverage:
     name: Coverage (${{ matrix.package }})
-    runs-on: ubuntu-latest
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on:
+      group: vypdev
+      labels: [self-hosted, codex, Linux]
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -90,14 +93,11 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
 
-      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+      - uses: ./.github/actions/setup-flutter
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
-          cache: true
 
-      - name: Resolve monorepo dependencies
-        run: dart scripts/create_local_overrides.dart "${{ matrix.package }}"
+      - uses: ./.github/actions/prepare-candidate-dependencies
 
       - name: Get dependencies
         working-directory: ${{ matrix.package }}
@@ -141,16 +141,17 @@ jobs:
 
   repository_checks:
     name: Repository checks
-    runs-on: ubuntu-latest
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on:
+      group: vypdev
+      labels: [self-hosted, codex, Linux]
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
 
-      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+      - uses: ./.github/actions/setup-flutter
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
-          cache: true
 
       - name: Validate metadata and generated artifacts
         run: |
@@ -166,14 +167,19 @@ jobs:
           cmp zstandard_web/blob/zstd.wasm zstandard_web/example/web/zstd.wasm
           cmp zstandard_web/blob/zstd.wasm zstandard/example/web/zstd.wasm
 
+      - name: Test candidate source isolation
+        run: python3 -m unittest discover -s scripts/tests -p test_native_candidate_source.py -v
+
       - name: Validate shell scripts
         run: bash -n scripts/*.sh zstandard_ios/scripts/*.sh zstandard_macos/scripts/*.sh
 
   safety_gate:
     name: Pull Request Safety Gate
-    runs-on: ubuntu-latest
+    runs-on:
+      group: vypdev
+      labels: [self-hosted, codex, Linux]
     timeout-minutes: 5
-    if: always()
+    if: ${{ always() && github.event.pull_request.head.repo.full_name == github.repository }}
     needs: [dart_packages, coverage, repository_checks]
     steps:
       - name: Require every safety-gate job

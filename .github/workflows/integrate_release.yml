@@ -19,7 +19,9 @@ permissions:
 jobs:
   open_integration_pull_requests:
     name: Open reviewed integration pull requests
-    runs-on: ubuntu-latest
+    runs-on:
+      group: vypdev
+      labels: [self-hosted, codex, Linux]
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803

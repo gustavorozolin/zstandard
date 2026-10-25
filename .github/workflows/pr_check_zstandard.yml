@@ -1,10 +1,12 @@
 name: PR Check Zstandard
 
 on:
+  pull_request:
+    branches:
+      - '**'
   push:
     branches:
       - develop
-  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -18,16 +20,20 @@ env:
 jobs:
   check_zstandard_analyze:
     name: Analyze Zstandard
-    runs-on: [self-hosted, Linux]
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on:
+      group: vypdev
+      labels: [self-hosted, codex, Linux]
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@v6
 
       - uses: ./.github/actions/setup-flutter
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
 
-      - name: Resolve workspace dependencies
-        run: dart scripts/create_local_overrides.dart zstandard
+      - uses: ./.github/actions/prepare-candidate-dependencies
+        with:
+          source: workspace
 
       - name: Verify publication metadata
         run: dart scripts/check_pub_metadata.dart
@@ -42,19 +48,25 @@ jobs:
 
   check_zstandard_test:
     name: Test Zstandard
-    runs-on: [self-hosted, Linux]
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on:
+      group: vypdev
+      labels: [self-hosted, codex, Linux]
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@v6
 
       - uses: ./.github/actions/setup-linux-dependencies
+        with:
+          coverage: 'true'
 
       - uses: ./.github/actions/setup-flutter
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
 
-      - name: Resolve workspace dependencies
-        run: dart scripts/create_local_overrides.dart zstandard
+      - uses: ./.github/actions/prepare-candidate-dependencies
+        with:
+          source: workspace
 
       - name: Get dependencies
         working-directory: zstandard
@@ -67,22 +79,35 @@ jobs:
       # Coverage threshold: lib/ only (same pattern as CLI and platform_interface)
       - name: Check coverage threshold (76% of lib/)
         working-directory: zstandard
-        run: dart ../scripts/check_lcov_coverage.dart coverage/lcov.info 76
+        run: |
+          lcov --rc function_coverage=0 --extract coverage/lcov.info 'lib/*' -o coverage/lcov_lib.info
+          COVERAGE=$(lcov --rc function_coverage=0 --summary coverage/lcov_lib.info 2>&1 | grep "lines" | awk '{print $2}' | sed 's/%//')
+          echo "Coverage (lib/ only): ${COVERAGE}%"
+          if [ -z "$COVERAGE" ]; then
+            echo "Could not parse coverage"
+            exit 1
+          fi
+          if (( $(echo "$COVERAGE < 76" | bc -l) )); then
+            echo "ERROR: Coverage ${COVERAGE}% is below 76% threshold"
+            exit 1
+          fi
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f
+        uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: zstandard/coverage/lcov.info
           flags: zstandard
-          disable_search: true
           fail_ci_if_error: true
 
   check_zstandard_publish_dry_run:
     name: Dry Run Publish Zstandard
-    runs-on: [self-hosted, Linux]
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on:
+      group: vypdev
+      labels: [self-hosted, codex, Linux]
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@v6
 
       - uses: ./.github/actions/preserve-flutter-project-files
         with:
@@ -93,8 +118,9 @@ jobs:
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
 
-      - name: Resolve workspace dependencies
-        run: dart scripts/create_local_overrides.dart zstandard
+      - uses: ./.github/actions/prepare-candidate-dependencies
+        with:
+          source: workspace
 
       - name: Get dependencies
         working-directory: zstandard

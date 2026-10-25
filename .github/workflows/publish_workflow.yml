@@ -18,38 +18,35 @@ env:
 jobs:
   validate_tag:
     name: Validate immutable release tag
-    runs-on: ubuntu-latest
+    runs-on:
+      group: vypdev
+      labels: [self-hosted, codex, Linux]
     timeout-minutes: 20
     outputs:
       version: ${{ steps.context.outputs.version }}
       commit: ${{ steps.context.outputs.commit }}
+      kind: ${{ steps.context.outputs.kind }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           fetch-depth: 0
 
-      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+      - uses: ./.github/actions/setup-flutter
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
-          cache: true
 
-      - name: Validate tag, release branch and package metadata
+      - name: Verify tag provenance and publication lane
         id: context
+        env:
+          HOTFIX_TREE: ${{ vars.HOTFIX_TREE || 'hotfix' }}
+        run: bash scripts/check_release_tag.sh
+
+      - name: Validate package metadata and generated artifacts
+        env:
+          VERSION: ${{ steps.context.outputs.version }}
         run: |
           set -euo pipefail
-          version="${GITHUB_REF_NAME#v}"
-          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Invalid stable release tag: $GITHUB_REF_NAME" >&2
-            exit 1
-          fi
-          git fetch origin "release/$version:refs/remotes/origin/release/$version"
-          commit="$(git rev-parse HEAD)"
-          branch_commit="$(git rev-parse "origin/release/$version")"
-          if [[ "$commit" != "$branch_commit" ]]; then
-            echo "Tag $GITHUB_REF_NAME must point to the tip of release/$version." >&2
-            exit 1
-          fi
+          version="$VERSION"
           dart scripts/check_pub_metadata.dart --release-version "$version"
           git diff --check
           for artifact in \
@@ -72,14 +69,15 @@ jobs:
           cmp zstandard_web/blob/zstd_worker.js zstandard/example/web/zstd_worker.js
           cmp zstandard_web/blob/zstd.wasm zstandard_web/example/web/zstd.wasm
           cmp zstandard_web/blob/zstd.wasm zstandard/example/web/zstd.wasm
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "commit=$commit" >> "$GITHUB_OUTPUT"
 
   publish:
     name: Publish packages to pub.dev with OIDC
-    runs-on: ubuntu-latest
+    runs-on:
+      group: vypdev
+      labels: [self-hosted, codex, Linux]
     timeout-minutes: 180
     needs: [validate_tag]
+    if: needs.validate_tag.outputs.kind == 'release'
     environment: pub.dev
     permissions:
       contents: read
@@ -95,11 +93,9 @@ jobs:
       # first on PATH while using the same Pub credentials.
       - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d
 
-      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+      - uses: ./.github/actions/setup-flutter
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
-          cache: true
 
       - name: Publish in dependency order, safely skipping immutable versions
         env:
@@ -129,13 +125,19 @@ jobs:
 
   verify:
     name: Verify all published packages
-    runs-on: ubuntu-latest
+    runs-on:
+      group: vypdev
+      labels: [self-hosted, codex, Linux]
     timeout-minutes: 30
     needs: [validate_tag, publish]
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           ref: ${{ needs.validate_tag.outputs.commit }}
+
+      - uses: ./.github/actions/setup-flutter
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
 
       - name: Verify exact versions through the public API
         env:
@@ -151,7 +153,9 @@ jobs:
 
   github_release:
     name: Create immutable GitHub release
-    runs-on: ubuntu-latest
+    runs-on:
+      group: vypdev
+      labels: [self-hosted, codex, Linux]
     timeout-minutes: 15
     needs: [validate_tag, verify]
     permissions:

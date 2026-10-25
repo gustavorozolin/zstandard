@@ -1,10 +1,12 @@
 name: PR Check Platform Interface
 
 on:
+  pull_request:
+    branches:
+      - '**'
   push:
     branches:
       - develop
-  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -18,13 +20,20 @@ env:
 jobs:
   check_platform_interface_analyze:
     name: Analyze Platform Interface
-    runs-on: [self-hosted, Linux]
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on:
+      group: vypdev
+      labels: [self-hosted, codex, Linux]
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@v6
 
       - uses: ./.github/actions/setup-flutter
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
+
+      - uses: ./.github/actions/prepare-candidate-dependencies
+        with:
+          source: workspace
 
       - name: Get dependencies
         working-directory: zstandard_platform_interface
@@ -36,15 +45,24 @@ jobs:
 
   check_platform_interface_test:
     name: Test Platform Interface
-    runs-on: [self-hosted, Linux]
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on:
+      group: vypdev
+      labels: [self-hosted, codex, Linux]
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@v6
 
       - uses: ./.github/actions/setup-linux-dependencies
+        with:
+          coverage: 'true'
 
       - uses: ./.github/actions/setup-flutter
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
+
+      - uses: ./.github/actions/prepare-candidate-dependencies
+        with:
+          source: workspace
 
       - name: Get dependencies
         working-directory: zstandard_platform_interface
@@ -57,22 +75,29 @@ jobs:
       # Coverage threshold: lib/ only (same pattern as CLI)
       - name: Check coverage threshold (85% of lib/)
         working-directory: zstandard_platform_interface
-        run: dart ../scripts/check_lcov_coverage.dart coverage/lcov.info 85
+        run: |
+          lcov --rc function_coverage=0 --extract coverage/lcov.info 'lib/*' -o coverage/lcov_lib.info
+          COVERAGE=$(lcov --rc function_coverage=0 --summary coverage/lcov_lib.info 2>&1 | grep "lines" | awk '{print $2}' | sed 's/%//')
+          echo "Coverage (lib/ only): ${COVERAGE}%"
+          if [ -z "$COVERAGE" ]; then echo "Could not parse coverage"; exit 1; fi
+          if (( $(echo "$COVERAGE < 85" | bc -l) )); then echo "ERROR: Coverage ${COVERAGE}% is below 85%"; exit 1; fi
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f
+        uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: zstandard_platform_interface/coverage/lcov.info
           flags: platform_interface
-          disable_search: true
           fail_ci_if_error: true
 
   check_platform_interface_publish_dry_run:
     name: Dry Run Publish Platform Interface
-    runs-on: [self-hosted, Linux]
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on:
+      group: vypdev
+      labels: [self-hosted, codex, Linux]
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@v6
 
       - uses: ./.github/actions/preserve-flutter-project-files
         with:
@@ -82,6 +107,10 @@ jobs:
       - uses: ./.github/actions/setup-flutter
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
+
+      - uses: ./.github/actions/prepare-candidate-dependencies
+        with:
+          source: workspace
 
       - name: Get dependencies
         working-directory: zstandard_platform_interface

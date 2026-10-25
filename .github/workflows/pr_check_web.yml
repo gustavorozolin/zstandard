@@ -1,10 +1,12 @@
 name: PR Check Web
 
 on:
+  pull_request:
+    branches:
+      - '**'
   push:
     branches:
       - develop
-  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -18,16 +20,20 @@ env:
 jobs:
   check_web_analyze:
     name: Analyze Web
-    runs-on: [self-hosted, Linux]
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on:
+      group: vypdev
+      labels: [self-hosted, codex, Linux]
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@v6
 
       - uses: ./.github/actions/setup-flutter
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
 
-      - name: Resolve workspace dependencies
-        run: dart scripts/create_local_overrides.dart zstandard_web
+      - uses: ./.github/actions/prepare-candidate-dependencies
+        with:
+          source: workspace
 
       - name: Get dependencies
         working-directory: zstandard_web
@@ -39,21 +45,26 @@ jobs:
 
   check_web_test:
     name: Test Web
-    runs-on: [self-hosted, Linux]
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on:
+      group: vypdev
+      labels: [self-hosted, codex, Linux]
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@v6
 
       - uses: ./.github/actions/setup-linux-dependencies
         with:
           desktop: 'true'
+          browser: 'true'
 
       - uses: ./.github/actions/setup-flutter
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
 
-      - name: Resolve workspace dependencies
-        run: dart scripts/create_local_overrides.dart zstandard_web
+      - uses: ./.github/actions/prepare-candidate-dependencies
+        with:
+          source: workspace
 
       - name: Get dependencies
         working-directory: zstandard_web
@@ -65,11 +76,12 @@ jobs:
 
       - name: Set up Chrome and matching ChromeDriver
         id: chrome
-        uses: browser-actions/setup-chrome@48ad923757ca74d66703209fe939badbdf80f2f4
+        uses: browser-actions/setup-chrome@v2
         with:
           chrome-version: stable
           install-chromedriver: true
-          install-dependencies: true
+          install-dependencies: false
+          no-sudo: true
 
       - name: Verify browser toolchain
         run: |
@@ -87,7 +99,9 @@ jobs:
           # 3.1.69 before compiling zstandard_native/src/zstd.
           EMSDK_REF: a36df02dc438e8b02f91122a4c62eeecb6784272
           EMSCRIPTEN_VERSION: '3.1.69'
-        run: bash scripts/build_web_wasm.sh
+        run: |
+          env -u CPATH -u LIBRARY_PATH -u PKG_CONFIG_PATH -u PKG_CONFIG_SYSROOT_DIR -u CMAKE_PREFIX_PATH \
+            bash scripts/build_web_wasm.sh
 
       - name: Verify generated WebAssembly is committed and synchronized
         run: |
@@ -95,14 +109,8 @@ jobs:
           git diff --check
           git diff --exit-code -- \
             zstandard_web/blob/zstd.js \
-            zstandard_web/blob/zstd_core.js \
-            zstandard_web/blob/zstd_worker.js \
             zstandard_web/example/web/zstd.js \
-            zstandard_web/example/web/zstd_core.js \
-            zstandard_web/example/web/zstd_worker.js \
-            zstandard/example/web/zstd.js \
-            zstandard/example/web/zstd_core.js \
-            zstandard/example/web/zstd_worker.js
+            zstandard/example/web/zstd.js
 
           # Emscripten/LLVM may choose a different valid WASM layout on
           # different host architectures, even with the same SDK revision.
@@ -119,22 +127,16 @@ jobs:
 
       - name: Upload regenerated artifacts when verification fails
         if: failure()
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        uses: actions/upload-artifact@v5
         with:
           name: web-regenerated-artifacts-${{ github.run_id }}
           if-no-files-found: error
           path: |
             zstandard_web/blob/zstd.js
-            zstandard_web/blob/zstd_core.js
-            zstandard_web/blob/zstd_worker.js
             zstandard_web/blob/zstd.wasm
             zstandard_web/example/web/zstd.js
-            zstandard_web/example/web/zstd_core.js
-            zstandard_web/example/web/zstd_worker.js
             zstandard_web/example/web/zstd.wasm
             zstandard/example/web/zstd.js
-            zstandard/example/web/zstd_core.js
-            zstandard/example/web/zstd_worker.js
             zstandard/example/web/zstd.wasm
 
       - name: Build Web example
@@ -178,7 +180,7 @@ jobs:
               --web-browser-flag=--disable-dev-shm-usage \
               --web-browser-flag=--disable-gpu \
               -d web-server \
-              --web-port=0
+              --web-port=8080
             DRIVE_EXIT=$?
             cat "$DRIVER_LOG"
             exit "$DRIVE_EXIT"
@@ -186,9 +188,12 @@ jobs:
 
   check_web_publish_dry_run:
     name: Dry Run Publish Web
-    runs-on: [self-hosted, Linux]
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on:
+      group: vypdev
+      labels: [self-hosted, codex, Linux]
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@v6
 
       - uses: ./.github/actions/preserve-flutter-project-files
         with:
@@ -199,8 +204,9 @@ jobs:
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
 
-      - name: Resolve workspace dependencies
-        run: dart scripts/create_local_overrides.dart zstandard_web
+      - uses: ./.github/actions/prepare-candidate-dependencies
+        with:
+          source: workspace
 
       - name: Get dependencies
         working-directory: zstandard_web

@@ -1,10 +1,12 @@
 name: PR Check Windows
 
 on:
+  pull_request:
+    branches:
+      - '**'
   push:
     branches:
       - develop
-  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -18,18 +20,21 @@ env:
 jobs:
   check_windows_analyze:
     name: Analyze Windows
-    runs-on: [self-hosted, Windows, X64]
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on:
+      group: vypdev
+      labels: [self-hosted, Windows, X64]
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@v6
 
-      - uses: ./.github/actions/setup-preinstalled-flutter-windows
+      - uses: ./.github/actions/setup-flutter-windows
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
 
-      - name: Resolve workspace dependencies
-        shell: cmd
-        run: call dart scripts\create_local_overrides.dart zstandard_windows
+      - uses: ./.github/actions/prepare-candidate-dependencies
+        with:
+          source: workspace
 
       - name: Get dependencies
         working-directory: zstandard_windows
@@ -43,18 +48,21 @@ jobs:
 
   check_windows_test:
     name: Test Windows
-    runs-on: [self-hosted, Windows, X64]
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on:
+      group: vypdev
+      labels: [self-hosted, Windows, X64]
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@v6
 
-      - uses: ./.github/actions/setup-preinstalled-flutter-windows
+      - uses: ./.github/actions/setup-flutter-windows
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
 
-      - name: Resolve workspace dependencies
-        shell: cmd
-        run: call dart scripts\create_local_overrides.dart zstandard_windows
+      - uses: ./.github/actions/prepare-candidate-dependencies
+        with:
+          source: workspace
 
       - name: Get dependencies
         working-directory: zstandard_windows
@@ -116,48 +124,61 @@ jobs:
         shell: cmd
         run: call flutter test integration_test/windows_integration_test.dart -d windows
 
-  check_windows_test_from_package_config:
-    name: Test Windows (exact package-config source)
-    runs-on: [self-hosted, Windows, X64]
+      - name: Diagnose native test build after failure
+        if: failure()
+        working-directory: zstandard_windows/example
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $cache = 'build/windows/x64/CMakeCache.txt'
+          if (-not (Test-Path -LiteralPath $cache)) {
+            Write-Host 'No configured native build is available for diagnosis.'
+            exit 0
+          }
+          $commands = @(Get-Content -LiteralPath $cache | Where-Object { $_.StartsWith('CMAKE_COMMAND:INTERNAL=') })
+          if ($commands.Count -ne 1) { throw 'Native CMake command is ambiguous.' }
+          $cmake = $commands[0].Split('=', 2)[1]
+          & $cmake --build build/windows/x64 --config Debug --target zstandard_windows_test --verbose
+          exit $LASTEXITCODE
+
+  check_windows_test_from_pub_cache:
+    name: Test Windows (from pub cache)
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on:
+      group: vypdev
+      labels: [self-hosted, Windows, X64]
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@v6
 
-      - uses: ./.github/actions/setup-preinstalled-flutter-windows
+      - uses: ./.github/actions/setup-flutter-windows
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
 
-      - name: Stage zstandard_native outside the repository
-        shell: cmd
-        run: |
-          @echo off
-          set "STAGE=%RUNNER_TEMP%\zstandard-stage"
-          if not exist "%STAGE%" mkdir "%STAGE%"
-          move zstandard_native "%STAGE%\zstandard_native"
-          if errorlevel 1 exit /b %ERRORLEVEL%
-          call dart scripts\create_local_overrides.dart zstandard_windows "%STAGE%\zstandard_native"
-          if errorlevel 1 exit /b %ERRORLEVEL%
+      - uses: ./.github/actions/prepare-candidate-dependencies
+        with:
+          source: pub-cache
 
-      - name: Clean and get dependencies from package_config
+      - name: Clean and get dependencies (force pub cache)
         working-directory: zstandard_windows
         shell: cmd
         run: |
           call flutter clean
           call flutter pub get
 
-      - name: Get dependencies in example from package_config
+      - name: Get dependencies in example (force pub cache)
         working-directory: zstandard_windows/example
         shell: cmd
         run: |
           call flutter clean
           call flutter pub get
 
-      - name: Build Windows example from package_config
+      - name: Build Windows example from pub cache
         working-directory: zstandard_windows/example
         shell: cmd
         run: call flutter build windows --debug
 
-      - name: Run Windows native C++ tests from package_config
+      - name: Run Windows native C++ tests from pub cache
         working-directory: zstandard_windows/example
         shell: cmd
         run: |
@@ -176,7 +197,7 @@ jobs:
           "%TEST_EXE%"
           if errorlevel 1 exit /b 1
 
-      - name: Run Windows package tests against the package-config DLL
+      - name: Run Windows package tests against the pub-cache DLL
         shell: cmd
         run: |
           @echo off
@@ -192,28 +213,36 @@ jobs:
           popd
           exit /b %EXIT_CODE%
 
-      - name: Launch Windows example and run package-config integration tests
+      - name: Launch Windows example and run integration tests from pub cache
         working-directory: zstandard_windows/example
         shell: cmd
         run: call flutter test integration_test/windows_integration_test.dart -d windows
 
-      - name: Restore workspace native package
-        if: always()
-        shell: cmd
+      - name: Restore this job's native workspace
+        if: ${{ always() && env.ZSTANDARD_NATIVE_ORIGINAL_PATH != '' }}
+        shell: powershell
         run: |
-          @echo off
-          if exist "%RUNNER_TEMP%\zstandard-stage\zstandard_native" move "%RUNNER_TEMP%\zstandard-stage\zstandard_native" zstandard_native
+          $ErrorActionPreference = 'Stop'
+          if (Test-Path -LiteralPath zstandard_native) { throw 'Refusing to overwrite the native workspace.' }
+          Move-Item -LiteralPath $env:ZSTANDARD_NATIVE_ORIGINAL_PATH -Destination zstandard_native
 
   check_windows_federated_example:
     name: Test federated Windows example
-    runs-on: [self-hosted, Windows, X64]
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on:
+      group: vypdev
+      labels: [self-hosted, Windows, X64]
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@v6
 
-      - uses: ./.github/actions/setup-preinstalled-flutter-windows
+      - uses: ./.github/actions/setup-flutter-windows
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
+
+      - uses: ./.github/actions/prepare-candidate-dependencies
+        with:
+          source: workspace
 
       - name: Clean and get federated example dependencies
         working-directory: zstandard/example
@@ -232,20 +261,40 @@ jobs:
         shell: cmd
         run: call flutter test integration_test/ -d windows
 
+      - name: Diagnose native test build after failure
+        if: failure()
+        working-directory: zstandard_windows/example
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $cache = 'build/windows/x64/CMakeCache.txt'
+          if (-not (Test-Path -LiteralPath $cache)) {
+            Write-Host 'No configured native build is available for diagnosis.'
+            exit 0
+          }
+          $commands = @(Get-Content -LiteralPath $cache | Where-Object { $_.StartsWith('CMAKE_COMMAND:INTERNAL=') })
+          if ($commands.Count -ne 1) { throw 'Native CMake command is ambiguous.' }
+          $cmake = $commands[0].Split('=', 2)[1]
+          & $cmake --build build/windows/x64 --config Debug --target zstandard_windows_test --verbose
+          exit $LASTEXITCODE
+
   check_windows_publish_dry_run:
     name: Dry Run Publish Windows
-    runs-on: [self-hosted, Windows, X64]
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on:
+      group: vypdev
+      labels: [self-hosted, Windows, X64]
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@v6
 
-      - uses: ./.github/actions/setup-preinstalled-flutter-windows
+      - uses: ./.github/actions/setup-flutter-windows
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
 
-      - name: Resolve workspace dependencies
-        shell: cmd
-        run: call dart scripts\create_local_overrides.dart zstandard_windows
+      - uses: ./.github/actions/prepare-candidate-dependencies
+        with:
+          source: workspace
 
       - name: Get dependencies
         working-directory: zstandard_windows

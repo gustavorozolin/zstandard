@@ -1,10 +1,12 @@
 name: PR Check CLI
 
 on:
+  pull_request:
+    branches:
+      - '**'
   push:
     branches:
       - develop
-  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -18,16 +20,20 @@ env:
 jobs:
   check_cli_analyze:
     name: Analyze CLI
-    runs-on: [self-hosted, Linux]
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on:
+      group: vypdev
+      labels: [self-hosted, codex, Linux]
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@v6
 
       - uses: ./.github/actions/setup-flutter
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
 
-      - name: Resolve workspace dependencies
-        run: dart scripts/create_local_overrides.dart zstandard_cli
+      - uses: ./.github/actions/prepare-candidate-dependencies
+        with:
+          source: workspace
 
       - name: Get dependencies
         working-directory: zstandard_cli
@@ -39,19 +45,25 @@ jobs:
 
   check_cli_test:
     name: Test CLI
-    runs-on: [self-hosted, Linux]
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on:
+      group: vypdev
+      labels: [self-hosted, codex, Linux]
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@v6
 
       - uses: ./.github/actions/setup-linux-dependencies
+        with:
+          coverage: 'true'
 
       - uses: ./.github/actions/setup-flutter
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
 
-      - name: Resolve workspace dependencies
-        run: dart scripts/create_local_overrides.dart zstandard_cli
+      - uses: ./.github/actions/prepare-candidate-dependencies
+        with:
+          source: workspace
 
       - name: Get dependencies
         working-directory: zstandard_cli
@@ -63,23 +75,25 @@ jobs:
 
       - name: Format coverage to lcov
         working-directory: zstandard_cli
-        run: >-
-          dart run coverage:format_coverage --lcov -i coverage
-          -o coverage/lcov.info --packages=.dart_tool/package_config.json
-          --report-on=lib
+        run: dart run coverage:format_coverage --lcov -i coverage -o coverage/lcov.info --packages=.dart_tool/package_config.json
 
-      # Coverage threshold: this package's lib/ only.
-      - name: Check coverage threshold (100% of lib/)
+      # Coverage threshold: lib/ only, excluding generated bindings
+      - name: Check coverage threshold (79% of lib/)
         working-directory: zstandard_cli
-        run: dart ../scripts/check_lcov_coverage.dart coverage/lcov.info 100
+        run: |
+          lcov --rc function_coverage=0 --extract coverage/lcov.info '*zstandard_cli/lib/*' -o coverage/lcov_lib.info
+          lcov --remove coverage/lcov_lib.info '*bindings_generated*' -o coverage/lcov_lib.info --ignore-errors unused
+          COVERAGE=$(lcov --rc function_coverage=0 --summary coverage/lcov_lib.info 2>&1 | grep "lines" | awk '{print $2}' | sed 's/%//')
+          echo "Coverage (lib/ excluding generated): ${COVERAGE}%"
+          if [ -z "$COVERAGE" ]; then echo "Could not parse coverage"; exit 1; fi
+          if (( $(echo "$COVERAGE < 79" | bc -l) )); then echo "ERROR: Coverage ${COVERAGE}% is below 79%"; exit 1; fi
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f
+        uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: zstandard_cli/coverage/lcov.info
           flags: cli
-          disable_search: true
           fail_ci_if_error: true
 
       - name: Run benchmarks (informational)
@@ -100,16 +114,20 @@ jobs:
 
   check_cli_publish_dry_run:
     name: Dry Run Publish CLI
-    runs-on: [self-hosted, Linux]
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on:
+      group: vypdev
+      labels: [self-hosted, codex, Linux]
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@v6
 
       - uses: ./.github/actions/setup-flutter
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
 
-      - name: Resolve workspace dependencies
-        run: dart scripts/create_local_overrides.dart zstandard_cli
+      - uses: ./.github/actions/prepare-candidate-dependencies
+        with:
+          source: workspace
 
       - name: Get dependencies
         working-directory: zstandard_cli

@@ -5,12 +5,14 @@ on:
 
 jobs:
   close-issues:
-    runs-on: ubuntu-latest
+    runs-on:
+      group: vypdev
+      labels: [self-hosted, codex, Linux]
     permissions:
       issues: write
       pull-requests: write
     steps:
-      - uses: actions/stale@f7176fd3007623b69d27091f9b9d4ab7995f0a06
+      - uses: actions/stale@v10
         with:
           operations-per-run: 100
           days-before-issue-stale: 30

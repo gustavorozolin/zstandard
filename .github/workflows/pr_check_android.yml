@@ -1,10 +1,12 @@
 name: PR Check Android
 
 on:
+  pull_request:
+    branches:
+      - '**'
   push:
     branches:
       - develop
-  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -23,16 +25,20 @@ env:
 jobs:
   check_android_analyze:
     name: Analyze Android
-    runs-on: [self-hosted, Linux]
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on:
+      group: vypdev
+      labels: [self-hosted, codex, Linux]
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@v6
 
       - uses: ./.github/actions/setup-flutter
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
 
-      - name: Resolve workspace dependencies
-        run: dart scripts/create_local_overrides.dart zstandard_android
+      - uses: ./.github/actions/prepare-candidate-dependencies
+        with:
+          source: workspace
 
       - name: Get dependencies
         working-directory: zstandard_android
@@ -64,7 +70,10 @@ jobs:
 
   check_android_test:
     name: Test Android (${{ matrix.example }}, ${{ matrix.source }})
-    runs-on: [self-hosted, Linux]
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on:
+      group: vypdev
+      labels: [self-hosted, codex, Linux]
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -72,9 +81,9 @@ jobs:
       max-parallel: 1
       matrix:
         example: [example, example_legacy]
-        source: [workspace, package-config]
+        source: [workspace, pub-cache]
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@v6
 
       - uses: ./.github/actions/setup-linux-dependencies
         with:
@@ -84,20 +93,9 @@ jobs:
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
 
-      - name: Stage native package outside the repository
-        if: matrix.source == 'package-config'
-        run: |
-          mkdir -p "$RUNNER_TEMP/zstandard-stage"
-          mv zstandard_native "$RUNNER_TEMP/zstandard-stage/zstandard_native"
-
-      - name: Resolve the selected native source exactly
-        run: |
-          if [[ "${{ matrix.source }}" == package-config ]]; then
-            dart scripts/create_local_overrides.dart zstandard_android \
-              "$RUNNER_TEMP/zstandard-stage/zstandard_native"
-          else
-            dart scripts/create_local_overrides.dart zstandard_android
-          fi
+      - uses: ./.github/actions/prepare-candidate-dependencies
+        with:
+          source: ${{ matrix.source }}
 
       - name: Get dependencies
         working-directory: zstandard_android/${{ matrix.example }}
@@ -109,7 +107,7 @@ jobs:
           flutter clean
           # The plugin CMake cache is kept outside Flutter's build directory
           # on persistent self-hosted runners. Remove it so workspace and
-          # package-config matrix entries cannot reuse a previous native source.
+          # pub-cache matrix entries cannot reuse a previous native source.
           rm -rf android/.cxx
           flutter pub get
 
@@ -120,13 +118,13 @@ jobs:
           flutter pub get
 
       - name: Set up JDK 17 (required by Android SDK tools and Gradle)
-        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: '17'
 
       - name: Set up Android SDK tools
-        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699
+        uses: android-actions/setup-android@v4
 
       - name: Verify Android SDK prerequisites
         run: bash scripts/check_android_ci_prerequisites.sh
@@ -187,7 +185,7 @@ jobs:
 
       - name: Upload Android emulator diagnostics
         if: always()
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        uses: actions/upload-artifact@v5
         with:
           name: android-emulator-logs-${{ matrix.example }}-${{ matrix.source }}-${{ github.run_id }}
           path: |
@@ -195,18 +193,21 @@ jobs:
             ${{ runner.temp }}/zstandard_ci_test-*.txt
           if-no-files-found: ignore
 
-      - name: Restore workspace native package
-        if: always() && matrix.source == 'package-config'
+      - name: Restore this job's native workspace
+        if: ${{ always() && env.ZSTANDARD_NATIVE_ORIGINAL_PATH != '' }}
         run: |
-          if [[ -d "$RUNNER_TEMP/zstandard-stage/zstandard_native" ]]; then
-            mv "$RUNNER_TEMP/zstandard-stage/zstandard_native" zstandard_native
-          fi
+          set -euo pipefail
+          test ! -e zstandard_native && test ! -L zstandard_native
+          mv "$ZSTANDARD_NATIVE_ORIGINAL_PATH" zstandard_native
 
   check_android_publish_dry_run:
     name: Dry Run Publish Android
-    runs-on: [self-hosted, Linux]
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on:
+      group: vypdev
+      labels: [self-hosted, codex, Linux]
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@v6
 
       - uses: ./.github/actions/preserve-flutter-project-files
         with:
@@ -217,8 +218,9 @@ jobs:
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
 
-      - name: Resolve workspace dependencies
-        run: dart scripts/create_local_overrides.dart zstandard_android
+      - uses: ./.github/actions/prepare-candidate-dependencies
+        with:
+          source: workspace
 
       - name: Get dependencies
         working-directory: zstandard_android

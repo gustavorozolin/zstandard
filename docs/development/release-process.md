@@ -18,7 +18,7 @@ tag-triggered publication, and reviewed branch integration.
 
 ## Stage 1: prepare and validate
 
-Create and push `release/X.Y.Z`, then run **Task - Prepare Release** from that
+Use the admitted Action-managed `release/X.Y.Z` branch, then run **Task - Prepare Release** from that
 branch with version `X.Y.Z`. The workflow refuses existing tags and mismatched
 branch/version values. It:
 
@@ -67,6 +67,8 @@ pub.dev are skipped. Before each unpublished package is sent, its dependencies
 are resolved and `dart pub publish --dry-run` must pass. A tag never moves. If
 the tagged candidate is wrong, prepare a new patch version.
 
+After publication, integrate the release branch into `develop` and `master` through reviewed pull requests under repository policy. The optional launcher-issue notification uses Copilot v3 and does not merge branches. This custom package workflow does not create a Copilot deployment operation; its publication notification cannot replace branch reconciliation. The release workflow does not alter either protected branch or their rulesets.
+
 ## Stage 3: reviewed branch integration
 
 After publication succeeds, run **Integrate Published Release** with `X.Y.Z`.
@@ -100,3 +102,22 @@ requests; it cannot merge or bypass those protections.
 
 See the [deployment runbook](../deployment/RUNBOOK.md) and
 [CI/CD](ci-cd.md).
+
+The hotfix workflow uses the same `prepare-package-release` composite action as the release workflow before opening production promotion. It provisions Flutter 3.47.2, updates all ten package versions and changelogs, pins Apple manifests, regenerates Wasm, and validates metadata and matching generated artifacts. Its preparation commit stages only the explicit release files. Use a PATCH bump (e.g. 1.5.0 → 1.5.1).
+
+The shared action validates existing files without rewriting them in release resume mode. Three contract tests (six inputs, including corruption of each of the four Web artifacts) execute the real Dart metadata tools against isolated package trees and verify preparation, idempotency, and rejection of corrupt resumed artifacts. The fixture replaces only Emscripten compilation; the Web CI retains real canonical Wasm regeneration. Final pub.dev verification provisions Dart through the same pinned Flutter action in every matrix job.
+
+Before checkout or write access, hotfix preparation requires the dispatch ref to match `hotfix/<version>` (or the configured `HOTFIX_TREE` prefix). Two admission tests execute the actual validation script across six refs: matching default/custom prefixes succeed, while `master`, `develop`, tags and a different version fail. Publication and resume retain their separate accepted-production validation.
+
+The hotfix publisher currently records the accepted tag and GitHub Release through Copilot; it does not run the ten-package pub.dev pipeline. Package publication requires the full release workflow and its platform candidate checks. Do not treat the hotfix GitHub Release as proof of pub.dev publication.
+
+## Existing hotfix contract
+
+The tag publisher recognizes an accepted Copilot hotfix only when its candidate
+branch is an ancestor of the immutable tag and that tag is contained in
+production `master`. Such tags keep the existing GitHub-only hotfix behavior;
+they do not start pub.dev publication. Ordinary package releases still require
+an exact `release/X.Y.Z` tip. Unknown tags, mismatched checkouts and unaccepted
+hotfixes fail before publication. Six real-Git tests cover ten inputs, including
+default/custom hotfix prefixes and four unsupported tag cases, without calling
+any publication API.
