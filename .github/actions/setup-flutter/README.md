@@ -24,6 +24,13 @@ and removes only its own simulator UUID. Setup does not install Xcode or accept
 Apple agreements. The reconciliation keeps develop's existing test matrices,
 coverage thresholds and complete package publication workflow.
 
+The iOS integration and release-candidate jobs additionally use a disposable
+copy of Flutter 3.47.2 with the official simulator log-readiness fix backported
+from flutter/flutter#193142. The SDK in the shared tool cache is unchanged.
+The job's existing launcher selects the private copy through `FLUTTER_ROOT`,
+and cleanup removes only that job's marked directory. See
+[`../../patches/README.md`](../../patches/README.md) for provenance and removal.
+
 The Linux dependency action reuses installed packages and downloads missing
 packages into a private prefix with their dependency closure. It never runs
 sudo, package maintainer scripts, dpkg repair or host package installation.
@@ -44,3 +51,10 @@ search variables that would override the NDK sysroot. The mixed x86_64/AArch64
 release job retains private native metadata and clears those variables only
 for the cross build, preserving the AArch64 compiler sysroot. WebAssembly
 regeneration uses the same isolation for Emscripten.
+
+Android integration and candidate builds use `prepare-android-gradle` after JDK
+setup. Its job-owned Gradle home bypasses persistent runner caches, bounds worker
+concurrency and keeps daemons local to the invocation. Candidate validation also
+separates modern and legacy consumer caches. Flutter selects the job's JDK in its
+private settings profile; the operator's Gradle cache and Flutter settings stay
+unchanged.

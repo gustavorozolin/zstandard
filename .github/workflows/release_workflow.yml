@@ -62,7 +62,7 @@ jobs:
     permissions: {}
     steps:
       - name: Validate bounded orchestration inputs
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        uses: actions/github-script@v9
         env:
           MODE: ${{ inputs.mode }}
           OPERATION_ID: ${{ inputs.operation-id }}
@@ -108,7 +108,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@v6
         with:
           ref: ${{ github.ref }}
           fetch-depth: 0
@@ -197,7 +197,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@v6
         with:
           ref: ${{ needs.update_files.outputs.commit }}
           fetch-depth: 0
@@ -252,7 +252,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@v6
         with:
           ref: ${{ needs.cli_build_macos_precompiled_libs.outputs.commit }}
           fetch-depth: 0
@@ -315,7 +315,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@v6
         with:
           ref: ${{ needs.cli_build_linux_precompiled_libs.outputs.commit }}
           fetch-depth: 0
@@ -382,7 +382,7 @@ jobs:
     timeout-minutes: 45
     needs: [update_files, cli_build_windows_precompiled_libs]
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@v6
         with:
           ref: ${{ needs.cli_build_windows_precompiled_libs.outputs.commit }}
           fetch-depth: 0
@@ -415,7 +415,7 @@ jobs:
     timeout-minutes: 120
     needs: [update_files, cli_build_windows_precompiled_libs]
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@v6
         with:
           ref: ${{ needs.cli_build_windows_precompiled_libs.outputs.commit }}
           fetch-depth: 0
@@ -425,11 +425,12 @@ jobs:
       - uses: ./.github/actions/setup-flutter
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
-      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699
+      - uses: android-actions/setup-android@v4
+      - uses: ./.github/actions/prepare-android-gradle
       - name: Build, run native tests and run both Android suites
         run: |
           set -euo pipefail
@@ -441,6 +442,9 @@ jobs:
           (cd zstandard_android && flutter pub get && flutter analyze lib test && flutter test)
           bash scripts/check_android_ci_prerequisites.sh
           for example in example example_legacy; do
+            # Keep modern and legacy Gradle state separate within this job too.
+            mkdir -p "$GRADLE_USER_HOME/$example"
+            cp "$GRADLE_USER_HOME/gradle.properties" "$GRADLE_USER_HOME/$example/gradle.properties"
             if [[ "$example" == example ]]; then
               grep -F 'id "com.android.application" version "9.1.0" apply false' "zstandard_android/$example/android/settings.gradle"
               grep -F 'gradle-9.3.1-all.zip' "zstandard_android/$example/android/gradle/wrapper/gradle-wrapper.properties"
@@ -448,13 +452,14 @@ jobs:
               grep -F 'id "com.android.application" version "8.11.1" apply false' "zstandard_android/$example/android/settings.gradle"
               grep -F 'gradle-8.14-all.zip' "zstandard_android/$example/android/gradle/wrapper/gradle-wrapper.properties"
             fi
-            (cd "zstandard_android/$example" && flutter pub get && flutter clean && flutter pub get && flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64,android-x64)
+            (export GRADLE_USER_HOME="$GRADLE_USER_HOME/$example"; cd "zstandard_android/$example" && flutter pub get && flutter clean && flutter pub get && flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64,android-x64)
             bash scripts/check_android_apk_abis.sh "zstandard_android/$example/build/app/outputs/flutter-apk" release
           done
           bash scripts/run_android_emulator_ci.sh bash -c '
             set -euo pipefail
             for example in example example_legacy; do
               (
+                export GRADLE_USER_HOME="$GRADLE_USER_HOME/$example"
                 cd "zstandard_android/$example"
                 timeout --foreground 10m flutter test integration_test/android_compression_integration_test.dart -d "emulator-${EMULATOR_PORT}" --reporter expanded
                 timeout --foreground 10m flutter test integration_test/android_properties_integration_test.dart -d "emulator-${EMULATOR_PORT}" --reporter expanded
@@ -472,7 +477,7 @@ jobs:
     timeout-minutes: 60
     needs: [update_files, cli_build_windows_precompiled_libs]
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@v6
         with:
           ref: ${{ needs.cli_build_windows_precompiled_libs.outputs.commit }}
           fetch-depth: 0
@@ -507,7 +512,7 @@ jobs:
     timeout-minutes: 90
     needs: [update_files, cli_build_windows_precompiled_libs]
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@v6
         with:
           ref: ${{ needs.cli_build_windows_precompiled_libs.outputs.commit }}
           fetch-depth: 0
@@ -518,7 +523,7 @@ jobs:
       - uses: ./.github/actions/setup-flutter
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
-      - uses: browser-actions/setup-chrome@48ad923757ca74d66703209fe939badbdf80f2f4
+      - uses: browser-actions/setup-chrome@v2
         id: chrome
         with:
           chrome-version: stable
@@ -545,7 +550,7 @@ jobs:
     timeout-minutes: 75
     needs: [update_files, cli_build_windows_precompiled_libs]
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@v6
         with:
           ref: ${{ needs.cli_build_windows_precompiled_libs.outputs.commit }}
           fetch-depth: 0
@@ -621,7 +626,7 @@ jobs:
         platform: [ios, macos]
         dependency_manager: [swiftpm, cocoapods]
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@v6
         with:
           ref: ${{ needs.cli_build_windows_precompiled_libs.outputs.commit }}
           fetch-depth: 0
@@ -632,6 +637,10 @@ jobs:
       - uses: ./.github/actions/setup-flutter
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
+      - name: Prepare private Flutter SDK with upstream iOS startup fix
+        if: matrix.platform == 'ios'
+        timeout-minutes: 10
+        run: bash .github/scripts/prepare_ios_flutter.sh
       - name: Select dependency manager and local native source
         env:
           PLATFORM: ${{ matrix.platform }}
@@ -688,7 +697,7 @@ jobs:
             trap cleanup_simulator EXIT
             GITHUB_OUTPUT="$simulator_output" python3 .github/scripts/start_ios_simulator.py
             device_id="$(sed -n 's/^device-id=//p' "$simulator_output")"
-            (cd zstandard_ios/example && bash ../../scripts/run_with_timeout.sh 900 flutter test integration_test/ios_integration_test.dart -d "$device_id" --reporter expanded)
+            (cd zstandard_ios/example && bash ../../scripts/run_with_timeout.sh 900 flutter test integration_test/ios_integration_test.dart -d "$device_id" --reporter expanded --verbose)
           else
             trap 'rm -f zstandard_macos/example/pubspec_overrides.yaml' EXIT
             (cd zstandard_macos/example && bash ../../scripts/run_with_timeout.sh 900 flutter test integration_test/macos_integration_test.dart -d macos --reporter expanded)
@@ -706,6 +715,10 @@ jobs:
       - name: Restore Flutter dependency-manager default
         if: always()
         run: flutter config --no-enable-swift-package-manager
+      - name: Remove this job's patched Flutter SDK
+        if: ${{ always() && env.ZSTANDARD_IOS_FLUTTER_DIR != '' }}
+        timeout-minutes: 3
+        run: bash .github/scripts/prepare_ios_flutter.sh --cleanup
 
   ready_to_tag:
     name: Release candidate ready to tag
@@ -725,7 +738,7 @@ jobs:
       - candidate_windows
       - candidate_apple
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@v6
         with:
           ref: ${{ needs.cli_build_windows_precompiled_libs.outputs.commit }}
           fetch-depth: 0
@@ -762,7 +775,7 @@ jobs:
           VERSION: ${{ inputs.version }}
           ISSUE: ${{ inputs.issue }}
         run: python3 scripts/release_candidate.py record "$VERSION" "$ISSUE" "$RUNNER_TEMP/release-candidate.json"
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+      - uses: actions/upload-artifact@v5
         with:
           name: release-candidate-${{ inputs.version }}
           path: ${{ runner.temp }}/release-candidate.json
@@ -787,7 +800,7 @@ jobs:
       pull-requests: write
       actions: write
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@v5
         with:
           persist-credentials: false
       - name: Create or resume promotion PR
@@ -837,7 +850,7 @@ jobs:
       pull-requests: write
       actions: write
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@v5
         with:
           persist-credentials: false
           ref: ${{ vars.MAIN_BRANCH || 'master' }}
@@ -885,7 +898,7 @@ jobs:
       pull-requests: write
     steps:
       - name: Verify published operation before recovery
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        uses: actions/github-script@v9
         env:
           ISSUE: ${{ inputs.issue }}
           OPERATION_ID: ${{ inputs.operation-id }}

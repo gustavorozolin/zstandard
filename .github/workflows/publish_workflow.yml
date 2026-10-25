@@ -34,7 +34,7 @@ jobs:
       issue: ${{ steps.candidate.outputs.issue }}
       operation-id: ${{ steps.candidate.outputs.operation-id }}
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -101,7 +101,7 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@v6
         with:
           ref: ${{ needs.validate_tag.outputs.commit }}
           fetch-depth: 0
@@ -109,7 +109,7 @@ jobs:
       # setup-dart provisions the short-lived pub.dev credential from GitHub's
       # OIDC token. Flutter is installed afterwards so its bundled Dart stays
       # first on PATH while using the same Pub credentials.
-      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d
+      - uses: dart-lang/setup-dart@v1
 
       - uses: ./.github/actions/setup-flutter
         with:
@@ -149,7 +149,7 @@ jobs:
     timeout-minutes: 30
     needs: [validate_tag, publish]
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@v6
         with:
           ref: ${{ needs.validate_tag.outputs.commit }}
 
@@ -185,7 +185,7 @@ jobs:
       cancel-in-progress: false
       queue: max
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@v6
         with:
           ref: ${{ needs.validate_tag.outputs.commit }}
 
@@ -243,7 +243,7 @@ jobs:
       contents: read
       issues: write
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@v6
         with:
           ref: ${{ needs.validate_tag.outputs.commit }}
           persist-credentials: false
