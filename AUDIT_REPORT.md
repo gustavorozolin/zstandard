@@ -14,6 +14,15 @@ branch and its remote validation. The changes were committed and pushed to
 release publication, release/integration workflow, or ruleset mutation was
 performed.
 
+Operational update (2026-10-25): this report preserves its historical audit
+snapshot. Current CI uses the trusted `vypdev` self-hosted pool and excludes
+fork heads; remote Actions use version tags such as `@v1`, `@v2` and `@v3`.
+Copilot now owns the deployment preparation, production promotion, publication
+continuation and reconciliation described in the
+[release process](docs/development/release-process.md) and
+[CI/CD contract](docs/development/ci-cd.md). Historical SHA-pin, hosted-runner
+and standalone-integration observations below are not the current runbook.
+
 ## 1. Executive summary
 
 The repository contained real release-blocking defects: decompression trusted

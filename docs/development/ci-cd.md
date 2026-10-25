@@ -2,20 +2,23 @@
 
 ## Pull requests
 
-`pull_request.yml` is the untrusted-code safety gate. It runs on GitHub-hosted
-Ubuntu with read-only contents permission, resolves monorepo dependencies,
-formats and analyzes all ten packages, executes every available VM/unit test,
-and validates metadata, generated Web artifacts, and shell syntax. A required
-hosted matrix collects coverage for the CLI, platform interface, and main
-package on every pull-request head, enforces their package-specific thresholds,
-and uploads the three matching Codecov flags for trusted same-repository pull
-requests. Forks run the same coverage gates without receiving the upload token.
-Its final
+`pull_request.yml` supplies the required safety gate for same-repository pull
+requests. Its jobs use runner group `vypdev` with labels
+`[self-hosted, codex, Linux]` and read-only repository contents permission.
+They resolve monorepo dependencies, format and analyze all ten packages, run
+package unit tests, and validate metadata, generated Web artifacts and shell
+syntax. The required coverage matrix checks the CLI, platform interface and
+main package, enforces their individual thresholds, and uploads matching
+Codecov flags for eligible same-repository actors. Its final
 `Pull Request Safety Gate` job is the stable required-check context; repository
 rules should require that one context on both `master` and `develop` rather
 than coupling protection to individual matrix-entry names.
 
-Untrusted pull-request code is never sent to persistent self-hosted runners.
+Fork pull requests are excluded by the same-repository job conditions,
+including the final safety gate; this workflow supplies no executed test or
+coverage evidence for a fork head. Fork changes need review and validation on
+a trusted same-repository branch before inclusion in a release.
+
 The platform-heavy workflows (`pr_check_*.yml`, retained under their historic
 names) run on same-repository pull requests and pushes to `develop`. Their
 job conditions exclude fork pull requests from persistent runners.

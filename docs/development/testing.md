@@ -167,12 +167,14 @@ flutter test --coverage
 
 View the generated `coverage/lcov.info` with a tool like `lcov` or your IDE. Aim for high coverage on the main plugin and platform interface; platform-specific code may have lower coverage when run on a single host.
 
-Pull requests collect three independent Codecov flags on every head:
+Same-repository pull requests collect three independent Codecov flags:
 `cli` (required 100%), `platform_interface` (minimum 85%), and `zstandard`
 (minimum 76%). CLI reports are restricted to `zstandard_cli/lib`, so test files
 and dependency sources cannot inflate or dilute its result. The stable Safety
-Gate requires all three local thresholds even when a fork cannot access the
-Codecov upload token.
+Gate requires all three thresholds. These jobs run on the trusted `vypdev`
+Linux pool; same-repository conditions skip fork heads, so their skipped jobs
+are not executed coverage evidence. Review and validate fork changes on a
+trusted same-repository branch before using them in a release.
 
 ## Mutation testing
 
