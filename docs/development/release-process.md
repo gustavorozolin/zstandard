@@ -27,11 +27,16 @@ pub.dev publication steps. Do not create a competing branch or merge flow.
 
 ## Choose the release version
 
-Use the installed Release form and select a version appropriate to the actual
-compatibility changes. Published 1.5.0 accepted Dart `^3.6.0` and Flutter
-`>=3.3.0`; the current main package requires Dart `^3.12.0` and Flutter
-`>=3.44.0`. Review and announce these requirements before choosing a patch,
-minor or major. Release-system maintenance does not itself bump versions.
+For a patch release, use the installed Release form with **Release Type:
+Patch** and **Release Version: Automatic**. Copilot resolves the next patch
+from the latest stable tag; for example, `v1.5.0` advances to `1.5.1`. Record
+the resolved version in the issue's control center before starting deployment.
+
+The release notes must announce the current minimums: Dart `^3.12.0` and
+Flutter `>=3.44.0`, compared with Dart `^3.6.0` and Flutter `>=3.3.0` in
+published 1.5.0. CI uses Flutter 3.47.2. Selecting a patch does not change these
+requirements. Package versions and release changelogs are updated by deployment
+preparation; do not bump or generate them locally before starting that phase.
 
 ## Prepare and promote
 
@@ -44,8 +49,10 @@ minor or major. Release-system maintenance does not itself bump versions.
    podspecs, then regenerates all four Web artifacts from canonical C source
    with the pinned Emscripten toolchain.
 4. Native jobs build macOS universal, Linux x64/arm64 and Windows x64/arm64
-   libraries. Every job consumes the preceding job's exact commit. Unchanged
-   outputs can be retried; a moved remote rejects a push.
+   libraries in that order. Each job commits its outputs to the managed
+   release branch and passes its exact commit to the next job. Unchanged
+   outputs can be retried; a moved remote rejects a push. No package is
+   published while this build chain is running.
 5. All candidate tests check out the final native-build commit. Static,
    formatting, package, platform release-build and integration gates must pass.
    The final gate rejects a moved release tip and uploads
@@ -57,6 +64,35 @@ minor or major. Release-system maintenance does not itself bump versions.
 Reconcile production fixes into development before cutting a candidate.
 Publication rejects a production merge whose Git tree differs from the tested
 candidate, preventing untested changes from entering through the production base.
+
+## Artifact storage and handoff
+
+Deployment preparation generates every publishable Web artifact and precompiled
+CLI library from the reviewed source. It also updates release metadata before
+the build chain. Local development outputs and earlier CI builds are not used
+as publication inputs.
+
+| Output | Producer in `release_workflow.yml` | Retained location |
+|---|---|---|
+| Versions, release changelogs, Apple package metadata and CLI version | `update_files` | Committed release candidate |
+| `zstd.js`, `zstd_core.js`, `zstd_worker.js`, `zstd.wasm` and matching example copies | `update_files`, through the pinned Emscripten helper | `zstandard_web/blob/` and the example Web directories in the candidate |
+| Universal macOS library (x86_64 and arm64) | `cli_build_macos_precompiled_libs` | `zstandard_cli/lib/src/bin/libzstandard_macos.dylib` |
+| Linux x64 and arm64 libraries | `cli_build_linux_precompiled_libs` | `zstandard_cli/lib/src/bin/libzstandard_linux_x64.so` and `libzstandard_linux_arm64.so` |
+| Windows x64 and ARM64 libraries | `cli_build_windows_precompiled_libs` | `zstandard_cli/lib/src/bin/zstandard_windows_x64.dll` and `zstandard_windows_arm64.dll` |
+| Candidate commit/tree and workflow attempt evidence | `ready_to_tag`, after every candidate gate passes | GitHub Actions artifact `release-candidate-X.Y.Z`, retained for 90 days |
+
+The handoff is the committed Git tree, not a runner cache or a temporary build
+directory. The Windows job's final commit includes the earlier metadata,
+WebAssembly, macOS and Linux outputs. All candidate gates check out that same
+commit. The receipt records its identity; it is not an archive of the binaries.
+The accepted production commit must have identical content, and the publisher
+checks out that production commit without rebuilding the libraries or WebAssembly.
+
+Flutter platform packages distribute the reviewed native source; consumer app
+builds compile it for their target. The CLI distributes the precompiled
+libraries above, and Web uses the generated WebAssembly assets. Candidate APKs,
+desktop applications and test hosts are validation outputs, not pub.dev package
+releases.
 
 ## Publish and reconcile
 
@@ -74,8 +110,9 @@ Before requesting pub.dev credentials, the tag workflow verifies:
   candidate, issue and workflow attempt; and
 - identical tested/production trees, metadata and synchronized artifacts.
 
-The `pub.dev` environment requires maintainer approval. OIDC publishing then
-proceeds in dependency order:
+The `pub.dev` environment requires maintainer approval. Publication begins only
+after every platform build and candidate gate has passed and production
+promotion has been accepted. OIDC publishing then proceeds in dependency order:
 
 ```text
 zstandard_platform_interface → zstandard_native
@@ -90,6 +127,11 @@ independently verified does Copilot create/verify the GitHub Release, receive
 the checksum attachment and run `published_deployment_action`. Copilot then
 performs its configured protected reconciliation. The old independent
 **Integrate Published Release** workflow is retired.
+
+The package uploads are sequential, not an atomic ten-package transaction.
+Their order is a dependency requirement, not a trigger to publish each platform
+as soon as it compiles. Recovery skips already published immutable versions and
+continues the remaining packages for the same accepted candidate and tag.
 
 ## Recovery and hotfix compatibility
 

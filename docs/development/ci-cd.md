@@ -17,7 +17,8 @@ than coupling protection to individual matrix-entry names.
 
 Untrusted pull-request code is never sent to persistent self-hosted runners.
 The platform-heavy workflows (`pr_check_*.yml`, retained under their historic
-names) run only on trusted pushes to `develop` or by explicit manual dispatch.
+names) run on same-repository pull requests and pushes to `develop`. Their
+job conditions exclude fork pull requests from persistent runners.
 They provide Android emulator/instrumentation, Linux desktop, ChromeDriver,
 Windows desktop/native, and both SwiftPM and CocoaPods Apple integration. They
 also run publish dry-runs and coverage where applicable.
@@ -38,6 +39,15 @@ It uploads a commit/tree receipt and invokes Copilot's production promotion.
 After protected promotion, Copilot's publication continuation creates/verifies
 the accepted production tag. Failed tag publications are retried without
 moving that tag.
+
+All publishable release metadata, WebAssembly and precompiled CLI libraries
+are produced by deployment preparation. The native build jobs run in order
+(macOS, Linux, Windows), committing their outputs to the managed release
+branch and passing the resulting commit to the next job. Candidate validation
+starts after the complete set exists. Publication consumes the accepted
+production commit with the same tested Git tree; it does not publish packages
+as individual platform builds finish. See
+[artifact storage and handoff](release-process.md#artifact-storage-and-handoff).
 
 `publish_workflow.yml` runs only on stable version tag pushes. Before OIDC it
 requires a successful candidate run/attempt, its artifact, identical tested and
@@ -66,9 +76,12 @@ cross-tools. Windows needs Visual Studio C++/CMake and an interactive desktop.
 Apple needs Xcode, simulator runtimes, CocoaPods, and a logged-in WindowServer
 session for macOS integration.
 
-The local composite actions verify the pinned Flutter 3.47.2 toolchain.
-Platform workflows build release candidates as well as debug test hosts;
-missing infrastructure is a failure rather than a silent skip.
+The local composite actions provision and verify the pinned Flutter 3.47.2
+toolchain in each runner's versioned tool cache. Ordinary platform CI builds
+disposable example/test hosts, including release-mode builds where required.
+Those outputs validate changes; the deployment workflow builds the artifacts
+that will be published. Missing infrastructure is a failure rather than a
+silent skip.
 
 ## Local equivalents
 
@@ -77,28 +90,34 @@ individual monorepo package; the `.sh` wrapper remains available on Unix-like
 systems. Run `dart format --output=none
 --set-exit-if-changed .`, the appropriate analyzer/test command, and the
 platform integration script. `scripts/check_pub_metadata.dart` validates the
-publication contract; `scripts/build_web_wasm.sh` regenerates Web artifacts.
+publication contract. `scripts/build_web_wasm.sh` is the deployment helper for
+regenerating Web artifacts; running local development commands does not
+prepare or authorize a release.
 
 See [Testing](testing.md), [Self-hosted CI](self-hosted-ci.md), and
 [Release process](release-process.md).
 
 ### Self-hosted Linux runner contract
 
-The Linux workflows target the repository labels `[self-hosted, Linux]`. The runner account must be able to use passwordless `sudo` so the local composite action at [`.github/actions/setup-linux-dependencies/action.yml`](../../.github/actions/setup-linux-dependencies/action.yml) can install the required packages.
+Linux workflows use runner group `vypdev` with labels
+`[self-hosted, codex, Linux]`. The Debian/Ubuntu runner provides APT/dpkg tools
+and network access. The
+[Linux dependency action](../../.github/actions/setup-linux-dependencies/action.yml)
+reuses installed dependencies and downloads missing packages and their
+dependency closure into a private job prefix. It extracts packages without
+running maintainer scripts or changing the host package database. It requires
+no passwordless `sudo` and performs no host package repair.
 
-The release workflow enables the action's `arm64` option, which installs the
-`aarch64-linux-gnu` cross compiler before producing the Linux ARM64 CLI
-artifact; it does not rely on a manually prepared compiler on the runner.
+The common toolchain includes `build-essential`, Clang, CMake, Ninja,
+`pkg-config`, and `curl`. Desktop jobs select GTK and Xvfb; coverage jobs select
+`lcov` and `bc`; browser jobs select Chrome's runtime libraries. Private headers
+and libraries are combined with read-only links to the installed toolchain.
 
-The action installs the common native toolchain (`build-essential`, Clang, CMake, Ninja, `pkg-config`, and `curl`). Desktop jobs additionally install GTK and Xvfb; coverage jobs install `lcov` and `bc`.
-
-Before installing anything, the action repairs an interrupted Debian package
-transaction with `dpkg --configure -a` and `apt-get -f install`, then runs the
-installation under a host-local lock and verifies the result with
-`apt-get check`. This is required because self-hosted runners preserve their
-package database between jobs; a cancelled job must not make the next check
-fail before the project is even built. If recovery itself fails on a runner,
-inspect `dpkg --audit` and the package-manager logs on that host.
+The release workflow enables the action's `arm64` option for the
+`aarch64-linux-gnu` cross compiler before building the Linux ARM64 CLI library.
+Android jobs avoid exporting host development-header search paths into the
+NDK build; the ARM64 cross-build similarly clears host paths that would
+override its sysroot.
 
 Android runners must also provide:
 
