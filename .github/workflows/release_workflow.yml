@@ -632,6 +632,10 @@ jobs:
       - uses: ./.github/actions/setup-flutter
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
+      - name: Prepare private Flutter SDK with upstream iOS startup fix
+        if: matrix.platform == 'ios'
+        timeout-minutes: 10
+        run: bash .github/scripts/prepare_ios_flutter.sh
       - name: Select dependency manager and local native source
         env:
           PLATFORM: ${{ matrix.platform }}
@@ -688,7 +692,7 @@ jobs:
             trap cleanup_simulator EXIT
             GITHUB_OUTPUT="$simulator_output" python3 .github/scripts/start_ios_simulator.py
             device_id="$(sed -n 's/^device-id=//p' "$simulator_output")"
-            (cd zstandard_ios/example && bash ../../scripts/run_with_timeout.sh 900 flutter test integration_test/ios_integration_test.dart -d "$device_id" --reporter expanded)
+            (cd zstandard_ios/example && bash ../../scripts/run_with_timeout.sh 900 flutter test integration_test/ios_integration_test.dart -d "$device_id" --reporter expanded --verbose)
           else
             trap 'rm -f zstandard_macos/example/pubspec_overrides.yaml' EXIT
             (cd zstandard_macos/example && bash ../../scripts/run_with_timeout.sh 900 flutter test integration_test/macos_integration_test.dart -d macos --reporter expanded)
@@ -706,6 +710,10 @@ jobs:
       - name: Restore Flutter dependency-manager default
         if: always()
         run: flutter config --no-enable-swift-package-manager
+      - name: Remove this job's patched Flutter SDK
+        if: ${{ always() && env.ZSTANDARD_IOS_FLUTTER_DIR != '' }}
+        timeout-minutes: 3
+        run: bash .github/scripts/prepare_ios_flutter.sh --cleanup
 
   ready_to_tag:
     name: Release candidate ready to tag

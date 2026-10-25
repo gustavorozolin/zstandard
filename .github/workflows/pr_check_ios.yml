@@ -82,6 +82,10 @@ jobs:
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
 
+      - name: Prepare private Flutter SDK with upstream iOS startup fix
+        timeout-minutes: 10
+        run: bash .github/scripts/prepare_ios_flutter.sh
+
       - uses: ./.github/actions/prepare-candidate-dependencies
         with:
           source: ${{ matrix.source }}
@@ -151,7 +155,7 @@ jobs:
           cd zstandard_ios/example
           bash ../../scripts/run_with_timeout.sh 900 \
             flutter test integration_test/ios_integration_test.dart \
-              -d "$DEVICE_ID" --reporter expanded
+              -d "$DEVICE_ID" --reporter expanded --verbose
 
       - name: Capture iOS simulator diagnostics
         if: failure()
@@ -205,6 +209,11 @@ jobs:
           set -euo pipefail
           test ! -e zstandard_native && test ! -L zstandard_native
           mv "$ZSTANDARD_NATIVE_ORIGINAL_PATH" zstandard_native
+
+      - name: Remove this job's patched Flutter SDK
+        if: ${{ always() && env.ZSTANDARD_IOS_FLUTTER_DIR != '' }}
+        timeout-minutes: 3
+        run: bash .github/scripts/prepare_ios_flutter.sh --cleanup
 
   check_ios_publish_dry_run:
     name: Dry Run Publish iOS

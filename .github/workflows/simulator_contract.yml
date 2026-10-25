@@ -4,6 +4,9 @@ on:
     paths:
       - '.github/scripts/start_ios_simulator.py'
       - '.github/scripts/tests/test_ios_simulator.py'
+      - '.github/scripts/tests/test_ios_flutter.py'
+      - '.github/scripts/prepare_ios_flutter.sh'
+      - '.github/patches/flutter-ios-log-readiness.patch'
       - '.github/workflows/pr_check_ios.yml'
       - '.github/workflows/simulator_contract.yml'
 jobs:
@@ -15,10 +18,25 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.11'
       - run: python -m unittest discover -s .github/scripts/tests -p test_ios_simulator.py -v
+      - run: python -m unittest discover -s .github/scripts/tests -p test_ios_flutter.py -v
+      - uses: ./.github/actions/setup-flutter
+        with:
+          flutter-version: '3.47.2'
+      - name: Prepare the exact SDK backport without changing the shared SDK
+        timeout-minutes: 10
+        run: bash .github/scripts/prepare_ios_flutter.sh
+      - name: Verify upstream delayed-log-stream startup regressions
+        timeout-minutes: 10
+        working-directory: ${{ env.FLUTTER_ROOT }}/packages/flutter_tools
+        run: ../../bin/dart test test/general.shard/ios/simulators_test.dart --name 'waiting for the log stream'
+      - name: Remove this job's patched Flutter SDK
+        if: ${{ always() && env.ZSTANDARD_IOS_FLUTTER_DIR != '' }}
+        timeout-minutes: 3
+        run: bash .github/scripts/prepare_ios_flutter.sh --cleanup
