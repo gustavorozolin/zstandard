@@ -1,0 +1,41 @@
+name: Prepare exact candidate dependencies
+description: Test matched unpublished monorepo packages in workspace or private cache paths.
+inputs:
+  source:
+    description: workspace or pub-cache; cache layout is a local candidate, not a published artifact.
+    default: workspace
+    required: false
+runs:
+  using: composite
+  steps:
+    - name: Stage candidate on Unix
+      if: runner.os != 'Windows'
+      shell: bash
+      env:
+        CANDIDATE_SOURCE: ${{ inputs.source }}
+      run: dart scripts/prepare_native_candidate.dart "$CANDIDATE_SOURCE"
+    - name: Stage candidate on Windows
+      if: runner.os == 'Windows'
+      shell: powershell
+      env:
+        CANDIDATE_SOURCE: ${{ inputs.source }}
+      run: |
+        & dart scripts/prepare_native_candidate.dart $env:CANDIDATE_SOURCE
+        if ($LASTEXITCODE -ne 0) { throw 'Candidate staging failed.' }
+    - name: Resolve matched monorepo packages on Unix
+      if: runner.os != 'Windows'
+      shell: bash
+      run: |
+        set -euo pipefail
+        for package in zstandard zstandard_android zstandard_cli zstandard_ios zstandard_linux zstandard_macos zstandard_web zstandard_windows; do
+          dart scripts/create_local_overrides.dart "$package" "$ZSTANDARD_NATIVE_DART_PATH"
+        done
+    - name: Resolve matched monorepo packages on Windows
+      if: runner.os == 'Windows'
+      shell: powershell
+      run: |
+        $ErrorActionPreference = 'Stop'
+        foreach ($package in @('zstandard', 'zstandard_android', 'zstandard_cli', 'zstandard_ios', 'zstandard_linux', 'zstandard_macos', 'zstandard_web', 'zstandard_windows')) {
+          & dart scripts/create_local_overrides.dart $package $env:ZSTANDARD_NATIVE_DART_PATH
+          if ($LASTEXITCODE -ne 0) { throw "Candidate resolution failed: $package" }
+        }

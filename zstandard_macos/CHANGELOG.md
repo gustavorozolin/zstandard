@@ -1,7 +1,9 @@
 ## Unreleased
 
+- Added byte-safe worker-isolate execution and bounded streaming decompression;
+  aligned CocoaPods and SwiftPM native sources and pinned SwiftPM releases.
 - Fixed intermittent macOS build failures caused by deleting synced zstd sources during compilation.
-- Deferred Swift Package Manager integration; CocoaPods remains the supported macOS dependency manager until CI can validate the alternative toolchain.
+- Added Swift Package Manager support while retaining CocoaPods compatibility.
 
 ## 1.5.0 - Dependencies Updated
 

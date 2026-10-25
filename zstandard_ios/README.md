@@ -10,7 +10,7 @@ Add the main plugin to your app; this package is included automatically via the 
 
 ```yaml
 dependencies:
-  zstandard: ^1.3.29
+  zstandard: ^1.5.0
 ```
 
 No extra setup is required for normal use.
@@ -42,12 +42,16 @@ final decompressed = await compressed?.decompress();
 
 - **ZstandardIOS()** — Creates the iOS platform implementation.
 - **compress(Uint8List data, int compressionLevel)** — Compresses `data` (level 1–22). Returns compressed bytes or `null`.
-- **decompress(Uint8List data)** — Decompresses zstd-compressed data. Returns decompressed bytes or `null`.
+- **decompressWithOptions(Uint8List data, {int maxOutputSize})** — Decompresses complete, concatenated, or unknown-size zstd frames with a bounded output (256 MiB by default). Invalid, truncated, or oversized input returns `null`.
 - **getPlatformVersion()** — Returns a platform identifier string.
 
 ## Architecture
 
-This package uses Dart FFI with the zstandard_ios framework (native zstd C library). The framework is built as part of your iOS app when you build or run from Xcode or Flutter.
+This package uses Dart FFI with the native zstd C library. Swift Package
+Manager statically links the shared target into the app; CocoaPods remains
+supported and embeds the plugin framework. Both paths compile the same
+common/compress/decompress source set from `zstandard_native`. Public work runs
+in an isolate using Dart-owned bytes and bounded streaming decompression.
 
 ## Testing
 
@@ -61,8 +65,9 @@ Unit tests run only on iOS (skipped on other platforms). For integration tests, 
 
 ## Troubleshooting
 
-- **Symbol or framework not found**: Ensure the iOS target is built (e.g. `flutter run -d ios`) and that you are targeting a supported architecture (arm64 device, x86_64/arm64 simulator).
-- **CocoaPods**: Run `pod install` in your app’s `ios/` directory if needed.
+- **Symbol or framework not found**: Ensure the iOS target is built (e.g. `flutter run -d ios`) and that you are targeting a supported architecture (arm64 device, x86_64/arm64 simulator). SwiftPM loads the statically linked symbols from the process; CocoaPods loads the embedded framework.
+- **Swift Package Manager**: Flutter 3.44 and newer enables this path by default.
+- **CocoaPods**: For older Flutter projects or explicit compatibility testing, run `flutter config --no-enable-swift-package-manager` and then `pod install` in your app’s `ios/` directory if needed.
 
 See the [documentation](https://github.com/vypdev/zstandard/tree/master/docs) for more.
 

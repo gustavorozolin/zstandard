@@ -16,20 +16,25 @@ Add the main plugin to your app; the Android implementation is included via the 
 
 ```yaml
 dependencies:
-  zstandard: ^1.3.29
+  zstandard: ^1.5.0
 ```
 
 No additional Gradle or native setup is required for normal use. The plugin registers the Android implementation automatically when running on Android.
 
 ## Android build requirements
 
-The plugin uses Built-in Kotlin with Android Gradle Plugin 9 or newer and requires Flutter 3.44 or newer (Dart 3.12 or newer). Its example projects validate the AGP 9 path with Flutter 3.47 or newer.
+The plugin does not apply or configure the Kotlin Gradle Plugin itself. Kotlin
+compiler settings are owned by the consuming Flutter application, which keeps
+the plugin compatible with both AGP 9 built-in Kotlin and older AGP projects.
+The plugin requires Flutter 3.44 or newer (Dart 3.12 or newer). Its example
+projects validate the AGP 9 path with Flutter 3.47 or newer and retain a legacy
+AGP 8.11.1 compatibility example.
 
 ## Architecture
 
 - **Native layer**: The facebook/zstd C library is built as part of the Android project (e.g. via CMake or Android NDK) and exposed as a shared library (e.g. `libzstandard_android_plugin.so`).
-- **Dart layer**: The package uses Dart FFI to open the library and generated bindings to call `ZSTD_compress`, `ZSTD_decompress`, `ZSTD_compressBound`, and `ZSTD_getFrameContentSize`.
-- **Isolates**: The implementation may use a helper isolate for async compression/decompression to avoid blocking the UI thread.
+- **Dart layer**: The package uses Dart FFI and the shared native codec for one-frame compression and bounded streaming decompression.
+- **Isolates**: Public compression/decompression runs in a worker isolate with Dart-owned byte buffers.
 
 ## Usage
 
@@ -63,7 +68,7 @@ See the package’s `android/` and `src/` directories and the main repo’s [Bui
 ## Testing
 
 - **Unit tests**: Run from the package directory: `flutter test`
-- **Integration tests**: Use the example app: run the app on an Android device or emulator and execute `integration_test` (e.g. `flutter test integration_test/` from the example).
+- **Integration tests**: Use the example app: run the app on an Android device or emulator and execute the integration files explicitly (e.g. `flutter test integration_test/android_compression_integration_test.dart` from the example).
 
 ## Performance characteristics
 

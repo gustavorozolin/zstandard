@@ -10,7 +10,7 @@ Add the main plugin to your app; this package is included automatically via the 
 
 ```yaml
 dependencies:
-  zstandard: ^1.3.29
+  zstandard: ^1.5.0
 ```
 
 No extra setup is required for normal use.
@@ -42,12 +42,17 @@ final decompressed = await compressed?.decompress();
 
 - **ZstandardMacOS()** — Creates the macOS platform implementation.
 - **compress(Uint8List data, int compressionLevel)** — Compresses `data` (level 1–22). Returns compressed bytes or `null`.
-- **decompress(Uint8List data)** — Decompresses zstd-compressed data. Returns decompressed bytes or `null`.
+- **decompressWithOptions(Uint8List data, {int maxOutputSize})** — Decompresses complete, concatenated, or unknown-size zstd frames with a bounded output (256 MiB by default). Invalid, truncated, or oversized input returns `null`.
 - **getPlatformVersion()** — Returns a platform identifier string.
 
 ## Architecture
 
-This package uses Dart FFI with the zstandard_macos framework (native zstd C library). Supports x64 and arm64 (Apple Silicon).
+This package uses Dart FFI with the native zstd C library. Swift Package
+Manager statically links the shared target into the app; CocoaPods remains
+supported and embeds the plugin framework. Both paths compile the same
+common/compress/decompress source set from `zstandard_native`. Public work runs
+in an isolate using Dart-owned bytes and bounded streaming decompression.
+Both x64 and arm64 are supported.
 
 ## Testing
 
@@ -61,7 +66,9 @@ Unit tests that use the native library require the framework to be built (e.g. b
 
 ## Troubleshooting
 
-- **Library not loaded**: Build your app with `flutter build macos` or run from the macOS runner so the framework is built and linked.
+- **Swift Package Manager**: Flutter 3.44 and newer enables this path by default.
+- **CocoaPods**: For older Flutter projects or explicit compatibility testing, run `flutter config --no-enable-swift-package-manager` and then `pod install` in your app’s `macos/` directory.
+- **Library not loaded**: Build your app with `flutter build macos` or run from the macOS runner so the native target is linked. SwiftPM exposes it through the process; CocoaPods embeds the plugin framework.
 - **Wrong architecture**: Ensure you are building for the correct target (x64 vs arm64).
 
 See the [documentation](https://github.com/vypdev/zstandard/tree/master/docs) for more.

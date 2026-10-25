@@ -1,99 +1,78 @@
-# Deployment and recovery runbook
+# Deployment and Recovery Runbook
 
-This runbook describes how to run a release, what the pipeline does, and how to recover when a release fails.
+## One-time configuration
 
-## Prerequisites
+1. Configure automated publishing on pub.dev for all ten packages, this GitHub
+   repository, and stable `vX.Y.Z` tags.
+2. Create and protect the GitHub `pub.dev` environment. Require a reviewer if
+   that matches the project's release policy.
+3. Protect stable tags and release/development branches. Keep self-hosted
+   platform workflows restricted to trusted pushes or manual dispatch.
+4. Allow GitHub Actions to create pull requests. After the integration
+   workflow opens them, a maintainer must approve the resulting safety-gate
+   runs, which GitHub initially places in an approval-required state.
 
-- **Pub.dev**: Each runner that publishes (macOS, Linux, Windows) must have run `dart pub login` so that `dart pub publish` can authenticate. Credentials are read from the usual Dart config location on each machine.
-- **Secrets** (in GitHub repo settings): `PAT` (personal access token with repo scope), if used by the release workflow for tagging/notifications.
-- **Variables** (optional): `DEBUG`, `OPEN_ROUTER_MODEL` (or similar) if your notification/tooling uses them.
+No `dart pub login` credential or persistent pub token is required. The tagged
+workflow exchanges GitHub's short-lived OIDC identity for publication access.
 
-## Running a release
+## Prepare a release
 
-1. **Update CHANGELOG.md** at the repo root with the new version and user-facing changes.
-2. In GitHub: **Actions → Task - Release → Run workflow**.
-3. Fill inputs:
-   - **version**: Semver, e.g. `1.5.0` (do not include `v`).
-   - **title**: Short release title.
-   - **changelog**: Summary (or paste from CHANGELOG).
-   - **issue**: Launcher/issue reference (e.g. `-1` if not used).
-4. Run the workflow. It will:
-   - Validate that tag `v<version>` does not exist.
-   - Copy CHANGELOG into all packages.
-   - Update all `pubspec.yaml` version and dependency versions (via `.github/scripts/update_versions.dart`).
-   - Commit and push version bumps.
-   - Build native libs (macOS, Linux, Windows) from pinned `facebook/zstd` ref.
-   - Create tag and GitHub release.
-   - Publish to pub.dev in order: **platform_interface → zstandard_native → platform packages (parallel) → cli → zstandard**, with verification after each publish.
-   - Notify on success (or run the rollback guide job on failure).
+1. Create `release/X.Y.Z` and update the root changelog.
+2. Push the branch and run **Task - Prepare Release** on that exact branch.
+3. Enter version `X.Y.Z` without `v`; complete the title/changelog inputs.
+4. Wait for all native-library builds, release builds, integration tests, and
+   metadata checks.
+5. Review the workflow summary and record the reported candidate SHA.
 
-## Dependency order (for manual publish)
+The workflow commits its generated versions and native artifacts to the
+release branch. It refuses an existing stable tag, so there is no resume mode
+that can bypass candidate validation.
 
-If you must publish manually (e.g. after a partial failure), use this order:
+## Publish
 
-```text
-zstandard_platform_interface
-  → zstandard_native
-  → zstandard_android, zstandard_ios, zstandard_web, zstandard_macos, zstandard_windows, zstandard_linux
-  → zstandard_cli
-  → zstandard
-```
-
-**zstandard_native** contains the shared C source (facebook/zstd); all native platform packages and the CLI depend on it, so it must be published before them.
-
-From repo root, with credentials configured:
+After approval, create `vX.Y.Z` at the exact remote branch tip and push it:
 
 ```bash
-# 1. Platform interface
-cd zstandard_platform_interface && dart pub publish -f && cd ../..
-
-# 2. Native (shared C source — required by platform packages and CLI)
-cd zstandard_native && dart pub publish -f && cd ../..
-
-# 3. Platforms (any order after zstandard_native)
-for pkg in zstandard_android zstandard_ios zstandard_web zstandard_macos zstandard_windows zstandard_linux; do
-  (cd $pkg && dart pub publish -f) && cd ../..
-done
-
-# 4. CLI
-cd zstandard_cli && dart pub publish -f && cd ../..
-
-# 5. Main plugin
-cd zstandard && dart pub publish -f && cd ../..
+git fetch origin release/X.Y.Z
+test "$(git rev-parse origin/release/X.Y.Z)" = "EXPECTED_CANDIDATE_SHA"
+git tag -s vX.Y.Z EXPECTED_CANDIDATE_SHA
+git push origin vX.Y.Z
 ```
 
-## When a release fails
+**Publish Tagged Release** independently rechecks the tag/branch identity,
+metadata, five CLI native libraries, and four synchronized Web artifacts. It
+then publishes sequentially in dependency order, waits for public indexing,
+runs a publication dry-run immediately before each unpublished package,
+verifies all ten versions, and creates the GitHub release with checksums.
 
-- **pub.dev does not allow deleting or overwriting published versions.** If some packages were published and others failed, you have two options:
-  1. **Fix the failure** (e.g. fix a test, fix credentials, fix network) and **re-run the workflow** with the **same version**. Only the steps that did not yet succeed will effectively run again (e.g. later packages can now resolve the already-published ones).
-  2. **Bump to a new patch version** (e.g. 1.5.0 → 1.5.1), fix the issue, and run a new release so all packages are published under the new version.
+## Recovery
 
-- The workflow includes a **Rollback / recovery guide** job that runs when any publish job fails. It writes a short recovery summary to the GitHub Actions job summary. Use that and this runbook to decide next steps.
+- Preparation failure: fix the release branch and rerun preparation. No tag or
+  package has been published.
+- Publication job interrupted: rerun the same tag workflow. The helper skips
+  a package version only after pub.dev reports it publicly, then continues in
+  dependency order.
+- Dependency not indexed: the workflow waits up to 20 minutes per package. If
+  pub.dev remains unavailable, rerun later with the same immutable tag.
+- Incorrect tagged content: never move or recreate the tag and never attempt
+  to overwrite a pub.dev version. Prepare a new patch release.
+- GitHub release failure after all packages publish: rerun the workflow; its
+  release creation/upload is idempotent.
 
-- **Common causes of failure**
-  - **Credentials**: Runner not logged in to pub.dev. On each publishing runner (macOS, Linux, Windows), run `dart pub login` and ensure the account has publish rights for the packages.
-  - **Dependency not found**: A package (e.g. `zstandard_platform_interface`) was just published and pub.dev has not indexed it yet. The workflow waits up to ~10 minutes (with backoff) and verifies via the pub.dev API; if it still fails, wait a bit and re-run the same version.
-  - **Tests or analyze**: Fix the failing package locally, commit, and re-run the release with the same version.
+After publication, run **Integrate Published Release** with the same version.
+It revalidates the final release and opens or reuses pull requests from the
+release branch into `master` and `develop`. Review and merge both normally;
+the workflow does not merge or bypass branch protection. Do not delete the
+release branch until both pull requests are complete.
 
-## Building precompiled CLI libraries (release workflow)
+## Updating upstream zstd
 
-The release workflow jobs that build macOS, Linux, and Windows CLI libraries currently run `cp -r zstd zstandard_cli/`, expecting a **`zstd`** directory at the repository root. The canonical source in the repo is **`zstandard_native/src/zstd/`**. If the "Copy zstd from repo root" step fails (e.g. in a normal clone there is no `zstd` at root), update the workflow to copy from `zstandard_native/src/zstd` into `zstandard_cli/zstd` instead, or ensure the runner has `zstd` at root (e.g. symlink or copy from `zstandard_native/src/zstd`).
+`scripts/update_zstd.sh` defaults to the repository's pinned upstream commit;
+an explicit tag or commit can be passed for an intentional upgrade. Review the
+diff, update `zstandard_native/UPSTREAM_ZSTD.md`, regenerate bindings when the
+public header changes, regenerate WebAssembly, and rerun every platform gate.
+Apple CocoaPods sync scripts create ignored compatibility copies; SwiftPM uses
+the canonical repository target directly.
 
-## Updating the zstd (C library) version
-
-The canonical zstd C source lives in **`zstandard_native/src/zstd/`**. To upgrade:
-
-1. From the repo root, run:
-   ```bash
-   ./scripts/update_zstd.sh        # latest from dev (upstream default)
-   ./scripts/update_zstd.sh v1.5.7   # or a specific tag/branch
-   ```
-   This fetches from [facebook/zstd](https://github.com/facebook/zstd) and updates `zstandard_native/src/zstd/`.
-2. Run `zstandard_ios/scripts/sync_zstd.sh` and `zstandard_macos/scripts/sync_zstd.sh` (from repo root) so iOS/macOS have the updated source for CocoaPods.
-3. Optionally run `./scripts/regenerate_bindings.sh` and commit any changed `*_bindings_generated.dart` files.
-4. Commit the changes. For releases, the workflow builds precompiled CLI libraries; see `.github/workflows/release_workflow.yml` for how each runner obtains the zstd source (e.g. from the repo or a pinned ref).
-
-## Related docs
-
-- [Release process](../development/release-process.md) – versioning and pre-release checklist.
-- [SECURITY.md](../../SECURITY.md) – reporting vulnerabilities and CI security practices.
+See [Release process](../development/release-process.md) and
+[`SECURITY.md`](../../SECURITY.md).

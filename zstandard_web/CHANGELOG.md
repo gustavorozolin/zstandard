@@ -1,3 +1,17 @@
+## Unreleased
+
+- Moved zstd execution to a dedicated Web Worker with transferable buffers.
+- Added consistent null semantics, bounded streaming decompression,
+  unknown-size and concatenated frame support, valid empty frames, and
+  release-browser integration coverage.
+- Pin the Emscripten toolchain used to regenerate the checked-in WebAssembly
+  artifacts from the canonical `zstandard_native` C source.
+- Normalize WebAssembly metadata with the matching `wasm-opt` tool and validate
+  the freshly regenerated module in the browser; raw WASM layout may still vary
+  across Linux x64 and macOS arm64.
+- Verify WebAssembly regeneration is reproducible in CI before building and
+  testing the web example.
+
 ## 1.5.0 - Dependencies Updated
 
 - Updated direct dependencies
