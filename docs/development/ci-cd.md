@@ -33,6 +33,16 @@ Copilot automation uses `pull_request_target` or issue metadata without checking
 untrusted pull-request code, grants read-only repository contents, and only
 uses its PAT for OWNER, MEMBER, or COLLABORATOR actors.
 
+The installed approval observer evaluates the current revision using
+`PR_APPROVAL_POLICY`. Its current `recommend` policy observes `Analyze Zstandard`,
+`Test Zstandard` and the coverage evidence supplied by `Test Zstandard`; a
+recommendation is distinct from a maintainer's approval. Effective branch rules
+must be readable and dismiss stale approvals on new pushes. Keep these observed
+package checks when validating a documentation-only PR, even if redundant
+platform runs are cancelled. After correcting a prerequisite, use the existing
+[approval observer](../../.github/workflows/copilot_pull_request_approval.yml)
+with the PR number to refresh its assessment. This does not launch deployment.
+
 ## Release workflows
 
 `release_workflow.yml` retains Copilot's `prepare`, `publish` and `resume`

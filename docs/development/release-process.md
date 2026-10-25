@@ -15,7 +15,9 @@ pub.dev publication steps. Do not create a competing branch or merge flow.
   tag-only `v*` deployment policy. There is no persistent pub token.
 - Require PRs and `Pull Request Safety Gate` on `master` and `develop`, with
   deletion/non-fast-forward protection. Retain merge commits for Copilot's
-  production-lineage reconciliation. Do not apply a blanket deletion ban to
+  production-lineage reconciliation. Enable dismissal of stale approvals on
+  new pushes and keep effective branch rules readable to Copilot's approval
+  observer. Do not apply a blanket deletion ban to
   managed branches: Copilot owns their final cleanup.
 - Protect stable version tags against update/deletion. Tag creation remains
   available to the authorized Copilot publisher.
