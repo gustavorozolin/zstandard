@@ -149,6 +149,37 @@ elif args and args[0]=='format':
                       if step.get('name') == 'Verify all release metadata and package tests')
         return packages, trace, script
 
+    @unittest.skipUnless(shutil.which('cmake') and shutil.which('ctest'),
+                         'CMake and CTest are needed for real test discovery')
+    def test_native_ctest_requires_discovered_passing_tests(self):
+        build = next(step['run'] for step in WORKFLOW['jobs']['candidate_linux']['steps']
+                     if step.get('name') == 'Build, run native tests and run integration tests')
+        command = next(line for line in build.splitlines() if line.startswith('ctest '))
+        for outcome in ['passing', 'failing', 'empty']:
+            with self.subTest(outcome=outcome):
+                source = self.root / outcome
+                plugin = source / 'plugins/zstandard_linux'
+                plugin.mkdir(parents=True)
+                # The empty case reproduces enable_testing() being called only
+                # inside Flutter's plugin subdirectory rather than at the root.
+                top_level = 'enable_testing()\n' if outcome != 'empty' else ''
+                (source / 'CMakeLists.txt').write_text(
+                    'cmake_minimum_required(VERSION 3.16)\nproject(ctest_contract NONE)\n'
+                    + top_level + 'add_subdirectory(plugins/zstandard_linux)\n')
+                (plugin / 'CMakeLists.txt').write_text(
+                    'enable_testing()\nadd_test(NAME native_contract '
+                    'COMMAND "${CMAKE_COMMAND}" -E '
+                    + ('false' if outcome == 'failing' else 'true') + ')\n')
+                directory = source / 'build'
+                subprocess.run(['cmake', '-S', str(source), '-B', str(directory)],
+                               env=self.env, check=True, capture_output=True, timeout=15)
+                result = self.run_command(f'cmake_build_dir="{directory}"\n' + command)
+                if outcome == 'passing':
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertIn('1/1 Test', result.stdout)
+                else:
+                    self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_static_checks_resolve_each_package_before_formatting(self):
         packages, trace, script = self.static_fixture()
         result = self.run_command(script)

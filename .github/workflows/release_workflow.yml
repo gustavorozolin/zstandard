@@ -513,7 +513,7 @@ jobs:
           cmake_build_dir="$(cd "$cmake_build_dir" && pwd)"
           (cd zstandard_linux/example && ZSTANDARD_LINUX_ENABLE_TESTS=1 cmake -S linux -B "$cmake_build_dir")
           cmake --build "$cmake_build_dir" --target zstandard_linux_test --parallel
-          ctest --test-dir "$cmake_build_dir" --output-on-failure
+          ctest --test-dir "$cmake_build_dir" --output-on-failure --no-tests=error
           # Flutter integration leaves generated_config.cmake pointing at a
           # temporary test listener; finish native builds before it is retired.
           bash scripts/test_linux_integration.sh

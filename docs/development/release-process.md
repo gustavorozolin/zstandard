@@ -64,6 +64,8 @@ preparation; do not bump or generate them locally before starting that phase.
    so each formatter uses its declared Dart language version. Linux package
    tests load the plugin from the freshly built release bundle, and native
    CTest runs before integration retires Flutter's temporary test entry point.
+   Native test discovery is enabled at the example's CMake root; an empty
+   CTest suite fails both release and normal Linux CI.
    Web integration starts its driver inside Xvfb without relying on exported
    Bash functions.
    The final gate rejects a moved release tip and uploads
