@@ -25,7 +25,7 @@ jobs:
       labels: [self-hosted, macOS, ARM64]
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@v6
 
       - uses: ./.github/actions/preserve-flutter-project-files
         with:
@@ -71,7 +71,7 @@ jobs:
         dependency_manager: [swiftpm, cocoapods]
         source: [workspace, pub-cache]
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@v6
 
       - uses: ./.github/actions/preserve-flutter-project-files
         with:
@@ -174,7 +174,7 @@ jobs:
 
       - name: Upload iOS simulator diagnostics
         if: failure()
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        uses: actions/upload-artifact@v5
         with:
           name: ios-simulator-diagnostics-${{ matrix.dependency_manager }}-${{ matrix.source }}-${{ github.run_id }}
           path: |
@@ -223,7 +223,7 @@ jobs:
       labels: [self-hosted, macOS, ARM64]
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@v6
 
       - uses: ./.github/actions/preserve-flutter-project-files
         with:

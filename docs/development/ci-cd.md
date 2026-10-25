@@ -22,8 +22,10 @@ They provide Android emulator/instrumentation, Linux desktop, ChromeDriver,
 Windows desktop/native, and both SwiftPM and CocoaPods Apple integration. They
 also run publish dry-runs and coverage where applicable.
 
-Every third-party action reference is pinned to a full commit SHA. Copilot
-automation uses `pull_request_target` or issue metadata without checking out
+Actions in workflows and composite actions must use version tags such as
+`@v1`, `@v2` or `@v3`. Commit SHA references are not permitted. The package
+preparation contract checks this policy when workflow or action files change.
+Copilot automation uses `pull_request_target` or issue metadata without checking out
 untrusted pull-request code, grants read-only repository contents, and only
 uses its PAT for OWNER, MEMBER, or COLLABORATOR actors.
 
