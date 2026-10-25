@@ -9,6 +9,9 @@ on:
       - 'scripts/check_pub_metadata.dart'
       - 'scripts/check_release_tag.sh'
       - '.github/scripts/tests/test_release_tag.py'
+      - '.github/scripts/tests/test_release_candidate.py'
+      - '.github/scripts/tests/test_release_builds.py'
+      - 'scripts/release_candidate.py'
       - '.github/workflows/publish_workflow.yml'
       - '.github/workflows/package_preparation_contract.yml'
       - '.github/workflows/release_workflow.yml'
@@ -45,3 +48,7 @@ jobs:
         run: '"$RUNNER_TEMP/preparation-contract/bin/python" -m unittest discover -s .github/scripts/tests -p test_hotfix_ref.py -v'
       - name: Verify release and hotfix tag provenance without publication
         run: '"$RUNNER_TEMP/preparation-contract/bin/python" -m unittest discover -s .github/scripts/tests -p test_release_tag.py -v'
+      - name: Verify exact candidate evidence and Copilot ownership
+        run: '"$RUNNER_TEMP/preparation-contract/bin/python" -m unittest discover -s .github/scripts/tests -p test_release_candidate.py -v'
+      - name: Verify native commit retries and actual CMake toolchain resolution
+        run: '"$RUNNER_TEMP/preparation-contract/bin/python" -m unittest discover -s .github/scripts/tests -p test_release_builds.py -v'

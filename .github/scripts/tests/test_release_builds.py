@@ -1,0 +1,170 @@
+"""Execute release workflow commands without publishing or building binaries."""
+
+import os
+import json
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import tempfile
+import unittest
+
+import yaml
+
+
+ROOT = Path(__file__).resolve().parents[3]
+WORKFLOW = yaml.load((ROOT / '.github/workflows/release_workflow.yml').read_text(), Loader=yaml.BaseLoader)
+
+
+class ReleaseBuildTests(unittest.TestCase):
+    def setUp(self):
+        self.folder = tempfile.TemporaryDirectory(prefix='zstd-release-build-')
+        self.addCleanup(self.folder.cleanup)
+        self.root = Path(self.folder.name) / 'workspace with spaces'
+        self.root.mkdir()
+        template = Path(self.folder.name) / 'template'
+        template.mkdir()
+        self.env = {**os.environ, 'GIT_CONFIG_GLOBAL': os.devnull,
+                    'GIT_CONFIG_NOSYSTEM': '1', 'GIT_TEMPLATE_DIR': str(template),
+                    'GITHUB_WORKSPACE': str(self.root), 'RELEASE_BRANCH': 'release/1.6.0',
+                    'GITHUB_OUTPUT': str(self.root / 'outputs')}
+
+    def git(self, *args):
+        return subprocess.run(['git', *args], cwd=self.root, env=self.env, check=True,
+                              capture_output=True, text=True).stdout.strip()
+
+    def run_command(self, script):
+        return subprocess.run(['bash', '-e', '-o', 'pipefail', '-c', script],
+                              cwd=self.root, env=self.env, text=True,
+                              capture_output=True, timeout=30)
+
+    def commit_command(self, platform):
+        return next(step['run'] for step in WORKFLOW['jobs'][f'cli_build_{platform}_precompiled_libs']['steps']
+                    if step.get('id') == 'candidate')
+
+    def initialize_origin(self):
+        self.git('init', '-q', '-b', 'release/1.6.0')
+        self.git('config', 'user.name', 'Fixture')
+        self.git('config', 'user.email', 'fixture@example.invalid')
+        binary = self.root / 'zstandard_cli/lib/src/bin/libzstandard_macos.dylib'
+        binary.parent.mkdir(parents=True)
+        binary.write_bytes(b'built library')
+        self.git('add', 'zstandard_cli')
+        self.git('commit', '-qm', 'candidate')
+        origin = Path(self.folder.name) / 'origin.git'
+        subprocess.run(['git', 'init', '--bare', '-q', str(origin)], env=self.env, check=True)
+        self.git('remote', 'add', 'origin', str(origin))
+        self.git('push', '-q', 'origin', 'HEAD:release/1.6.0')
+        return binary
+
+    def test_native_commit_steps_accept_unchanged_retries_and_record_the_sha(self):
+        binary = self.initialize_origin()
+        for platform in ['macos', 'linux']:
+            with self.subTest(platform=platform):
+                before = self.git('rev-parse', 'HEAD')
+                for _ in range(2):
+                    result = self.run_command(self.commit_command(platform))
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertEqual(self.git('rev-parse', 'HEAD'), before)
+                binary.write_bytes(binary.read_bytes() + b' rebuilt')
+                result = self.run_command(self.commit_command(platform))
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertNotEqual(self.git('rev-parse', 'HEAD'), before)
+                self.assertEqual(self.git('rev-parse', 'HEAD'), self.git('rev-parse', 'refs/remotes/origin/release/1.6.0'))
+        self.assertIn('commit=' + self.git('rev-parse', 'HEAD'), (self.root / 'outputs').read_text())
+
+    def test_native_commit_step_does_not_overwrite_a_moved_remote(self):
+        binary = self.initialize_origin()
+        self.git('commit', '--allow-empty', '-qm', 'remote advanced')
+        remote = self.git('rev-parse', 'HEAD')
+        self.git('push', '-q', 'origin', 'HEAD:release/1.6.0')
+        self.git('checkout', '--detach', '-q', 'HEAD~1')
+        binary.write_bytes(b'new library')
+        result = self.run_command(self.commit_command('linux'))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.git('ls-remote', 'origin', 'refs/heads/release/1.6.0').split()[0], remote)
+
+    @unittest.skipUnless(shutil.which('cmake'), 'CMake is needed for actual path resolution')
+    def test_arm_toolchain_path_resolves_in_real_cmake_with_a_spaced_workspace(self):
+        steps = WORKFLOW['jobs']['cli_build_linux_precompiled_libs']['steps']
+        build = next(step['run'] for step in steps if step.get('name') == 'Build x86_64 and arm64 libraries')
+        command = re.search(r'cmake -S zstandard_cli/builders/linux_arm[^\n]*\\\n(?:[^\n]*\\\n)*[^\n]*', build).group(0)
+        source = self.root / 'zstandard_cli/builders/linux_arm'
+        source.mkdir(parents=True)
+        (source / 'CMakeLists.txt').write_text('cmake_minimum_required(VERSION 3.16)\nproject(path_contract NONE)\n')
+        (source / 'arm64-toolchain.cmake').write_text('set(CMAKE_SYSTEM_NAME Linux)\n')
+        result = self.run_command(command)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    @unittest.skipUnless(shutil.which('cmake'), 'CMake is needed for actual path resolution')
+    def test_linux_native_tests_reconfigure_the_existing_flutter_build_directory(self):
+        build = next(step['run'] for step in WORKFLOW['jobs']['candidate_linux']['steps']
+                     if step.get('name') == 'Build, run native tests and run integration tests')
+        command = build[build.index('cmake_build_dir='):build.index('cmake --build "$cmake_build_dir"')]
+        example = self.root / 'zstandard_linux/example'
+        source = example / 'linux'
+        source.mkdir(parents=True)
+        (source / 'CMakeLists.txt').write_text('cmake_minimum_required(VERSION 3.16)\nproject(path_contract NONE)\n')
+        existing = example / 'build/linux/x64/release'
+        existing.mkdir(parents=True)
+        (existing / 'CMakeCache.txt').touch()
+        result = self.run_command(command)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertTrue((existing / 'CMakeFiles').is_dir())
+
+    def test_release_admission_rejects_other_branches_before_checkout(self):
+        script = WORKFLOW['jobs']['validate']['steps'][0]['with']['script']
+        for ref, expected in [('refs/heads/release/1.6.0', 0), ('refs/heads/master', 1),
+                              ('refs/heads/develop', 1), ('refs/tags/v1.6.0', 1),
+                              ('refs/heads/release/1.5.0', 1)]:
+            with self.subTest(ref=ref):
+                env = {**self.env, 'MODE': 'prepare', 'OPERATION_ID': '', 'VERSION': '1.6.0',
+                       'ISSUE': '7', 'TITLE': 'Fixture', 'CHANGELOG': 'Fixture',
+                       'RELEASE_REF': ref, 'RELEASE_TREE': 'release'}
+                result = subprocess.run(['node', '-e', 'globalThis.core={setFailed:()=>{process.exitCode=1;}};\n' + script],
+                                        env=env, text=True, capture_output=True, timeout=10)
+                self.assertEqual(result.returncode, expected, result.stderr)
+
+    def test_publication_recovery_retries_only_failed_matching_tag_pushes(self):
+        steps = WORKFLOW['jobs']['publish']['steps']
+        script = next(step['run'] for step in steps
+                      if step.get('name') == 'Retry a failed publication of the same immutable tag')
+        tools = self.root / 'tools'
+        tools.mkdir()
+        fake = tools / 'gh'
+        fake.write_text('''#!/usr/bin/env python3
+import json,os,sys
+with open(os.environ['TRACE'], 'a') as trace:
+    trace.write(json.dumps(sys.argv[1:])+'\\n')
+if '/commits/' in sys.argv[2]:
+    print('a'*40)
+elif '/runs?' in sys.argv[2]:
+    print(os.environ['RUNS'])
+elif sys.argv[1:4] != ['api','--method','POST']:
+    sys.exit(13)
+''')
+        fake.chmod(0o700)
+        trace = self.root / 'trace'
+        self.env.update(PATH=str(tools) + os.pathsep + self.env['PATH'], VERSION='1.6.0',
+                        GITHUB_REPOSITORY='fixture/zstandard', TRACE=str(trace))
+        for conclusion in ['failure', 'cancelled', 'timed_out', 'success', None]:
+            for branch, event in [('v1.6.0', 'push'), ('v1.5.0', 'push'),
+                                  ('v1.6.0', 'workflow_dispatch')]:
+                with self.subTest(conclusion=conclusion, branch=branch, event=event):
+                    trace.write_text('')
+                    self.env['RUNS'] = json.dumps(dict(workflow_runs=[dict(
+                        id=42, head_branch=branch, event=event,
+                        status='completed' if conclusion else 'in_progress', conclusion=conclusion)]))
+                    result = self.run_command(script)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    calls = [json.loads(line) for line in trace.read_text().splitlines()]
+                    posts = [call for call in calls if '--method' in call]
+                    expected = conclusion in ['failure', 'cancelled', 'timed_out'] and branch == 'v1.6.0' and event == 'push'
+                    self.assertEqual(bool(posts), expected)
+                    if posts:
+                        self.assertEqual(posts, [['api', '--method', 'POST',
+                                                 'repos/fixture/zstandard/actions/runs/42/rerun']])
+
+
+if __name__ == '__main__':
+    unittest.main()

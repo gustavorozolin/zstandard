@@ -29,21 +29,31 @@ uses its PAT for OWNER, MEMBER, or COLLABORATOR actors.
 
 ## Release workflows
 
-- `release_workflow.yml` (**Task - Prepare Release**) runs only by manual
-  dispatch on `release/X.Y.Z`. It mutates the release branch, builds native
-  artifacts, and validates the complete candidate. It neither tags nor
-  publishes.
-- `publish_workflow.yml` (**Publish Tagged Release**) runs only for a stable
-  `vX.Y.Z` tag, validates that it points to the matching release-branch tip,
-  publishes all packages with OIDC on the trusted self-hosted Linux runners, verifies pub.dev,
-  and creates the GitHub release.
-- `integrate_release.yml` (**Integrate Published Release**) is a separate
-  manual workflow. It verifies the completed publication and opens reviewed
-  pull requests into `master` and `develop`; it never merges or bypasses
-  branch protection.
+`release_workflow.yml` retains Copilot's `prepare`, `publish` and `resume`
+contract. Preparation consumes an admitted managed release branch, generates
+metadata/native artifacts and runs all candidate gates on one exact commit.
+It uploads a commit/tree receipt and invokes Copilot's production promotion.
+After protected promotion, Copilot's publication continuation creates/verifies
+the accepted production tag. Failed tag publications are retried without
+moving that tag.
 
-Both workflows share one non-cancelling concurrency group, preventing two
-publication state machines from overlapping.
+`publish_workflow.yml` runs only on stable version tag pushes. Before OIDC it
+requires a successful candidate run/attempt, its artifact, identical tested and
+production content, and the matching Copilot promotion/issue state. The
+protected `pub.dev` environment requires maintainer approval. After publishing
+and independently verifying all ten packages, the installed Copilot actions
+create/verify the GitHub Release and start configured reconciliation. Accepted
+hotfixes preserve their existing GitHub-only lane.
+
+Copilot state transitions share its per-issue non-cancelling queue. Package
+publication has a separate repository-wide lock, so waiting for environment
+approval cannot deadlock a Copilot continuation. The former standalone
+integration workflow is retired; Copilot owns reconciliation and cleanup.
+
+The package preparation contract runs real version/metadata helpers, actual
+CMake path resolution, Git commit/retry scenarios, admission scripts and
+candidate evidence validation using isolated fixtures. These tests never call
+a publication API. See [Release process](release-process.md).
 
 ## Runner trust and requirements
 

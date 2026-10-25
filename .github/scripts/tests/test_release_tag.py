@@ -58,12 +58,21 @@ class ReleaseTagTests(unittest.TestCase):
                                    'HOTFIX_TREE': prefix},
                               capture_output=True, text=True, timeout=15)
 
-    def test_exact_prepared_release_tip_can_publish(self):
-        self.candidate('release')
+    def test_accepted_release_production_merge_can_enter_publication_validation(self):
+        branch = self.candidate('release')
+        self.git('checkout', '-q', 'master')
+        self.git('merge', '-q', '--no-ff', branch, '-m', 'accepted production')
+        self.git('push', '-q', 'origin', 'master')
         self.git('tag', 'v1.6.0')
         result = self.classify()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('kind=release\n', self.output.read_text())
+
+    def test_release_tag_before_production_promotion_is_rejected(self):
+        self.candidate('release')
+        self.git('tag', 'v1.6.0')
+        self.assertNotEqual(self.classify().returncode, 0)
+        self.assertEqual(self.output.read_text(), '')
 
     def test_accepted_default_and_custom_hotfixes_preserve_nonpublication(self):
         for prefix in ['hotfix', 'maintenance/hotfix']:
