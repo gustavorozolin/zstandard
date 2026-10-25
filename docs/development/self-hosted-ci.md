@@ -86,6 +86,8 @@ Windows jobs target `[self-hosted, Windows, X64]`. The workflow installs and cac
 
 Windows CI and release jobs use the built-in Windows PowerShell (`powershell`), including runners without PowerShell 7 (`pwsh`). Release preparation selects the CMake generator for the installed Visual Studio and writes GitHub output files explicitly as UTF-8; Windows PowerShell 5.1 otherwise redirects output as UTF-16. The CLI release build also requires the Visual Studio ARM64 C++ tools for its cross-compiled DLL.
 
+Windows setup resolves CMake and CTest from the job's current `PATH`, a standalone CMake installation, or Visual Studio's bundled CMake tools, then adds their directory to the job's `PATH`. A machine-wide `PATH` change is not required; both executables must be installed and runnable.
+
 The workflow builds `zstandard_windows/example` in Debug mode, runs the generated native test target (including a zstd compression/decompression round trip), runs the Windows package tests with the built DLL on `PATH`, and launches the example for Flutter integration tests. The same sequence is repeated with the current `zstandard_native` package staged outside the checkout and selected through `package_config.json`. A separate federated-example job builds `zstandard/example` and runs its integration suite.
 
 ## Web job requirements
