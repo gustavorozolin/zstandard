@@ -62,7 +62,7 @@ jobs:
     permissions: {}
     steps:
       - name: Validate bounded orchestration inputs
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         env:
           MODE: ${{ inputs.mode }}
           OPERATION_ID: ${{ inputs.operation-id }}
@@ -762,7 +762,7 @@ jobs:
           VERSION: ${{ inputs.version }}
           ISSUE: ${{ inputs.issue }}
         run: python3 scripts/release_candidate.py record "$VERSION" "$ISSUE" "$RUNNER_TEMP/release-candidate.json"
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: release-candidate-${{ inputs.version }}
           path: ${{ runner.temp }}/release-candidate.json
@@ -787,7 +787,7 @@ jobs:
       pull-requests: write
       actions: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           persist-credentials: false
       - name: Create or resume promotion PR
@@ -837,7 +837,7 @@ jobs:
       pull-requests: write
       actions: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           persist-credentials: false
           ref: ${{ vars.MAIN_BRANCH || 'master' }}
@@ -885,7 +885,7 @@ jobs:
       pull-requests: write
     steps:
       - name: Verify published operation before recovery
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         env:
           ISSUE: ${{ inputs.issue }}
           OPERATION_ID: ${{ inputs.operation-id }}
