@@ -323,11 +323,17 @@ jobs:
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
       - name: Build x64 and ARM64 libraries with the installed Visual Studio
-        shell: pwsh
+        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $generator = @((cmake --help | Select-String -AllMatches -Pattern 'Visual Studio \d+ \d{4}').Matches | ForEach-Object Value | Sort-Object -Unique | Sort-Object { [int](($_ -split ' ')[-1]) } -Descending | Select-Object -First 1)
-          if (-not $generator) { throw 'No Visual Studio CMake generator was found.' }
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+          $installations = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -format json | ConvertFrom-Json
+          $installation = $installations | Select-Object -First 1
+          if (-not $installation) { throw 'No installed Visual Studio C++ toolchain was found.' }
+          $vsPath = $installation.installationPath
+          $vsMajor = ([Version]$installation.installationVersion).Major
+          $generator = (cmake --help | Select-String -AllMatches -Pattern "Visual Studio $vsMajor \d{4}").Matches | ForEach-Object Value | Sort-Object -Unique | Select-Object -First 1
+          if (-not $generator) { throw "CMake has no generator for the installed Visual Studio $vsMajor." }
           Write-Host "Using CMake generator: $generator"
           $root = (Get-Location).Path
           $x64Build = Join-Path $root 'zstandard_cli/builders/windows_x64/build'
@@ -344,9 +350,7 @@ jobs:
           New-Item -ItemType Directory -Force zstandard_cli/lib/src/bin | Out-Null
           Copy-Item (Join-Path $x64Build 'Release/zstandard_windows.dll') zstandard_cli/lib/src/bin/zstandard_windows_x64.dll
           Copy-Item (Join-Path $armBuild 'Release/zstandard_windows.dll') zstandard_cli/lib/src/bin/zstandard_windows_arm64.dll
-          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
-          $vsPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-          $dumpbin = Get-ChildItem $vsPath -Filter dumpbin.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          $dumpbin = Get-ChildItem $vsPath -Filter dumpbin.exe -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match '[\\/]bin[\\/]Hostx64[\\/]x64[\\/]dumpbin\.exe$' } | Select-Object -First 1
           if (-not $dumpbin) { throw 'dumpbin.exe was not found in the installed Visual Studio toolchain.' }
           $x64Headers = (& $dumpbin.FullName /headers zstandard_cli/lib/src/bin/zstandard_windows_x64.dll | Out-String)
           $armHeaders = (& $dumpbin.FullName /headers zstandard_cli/lib/src/bin/zstandard_windows_arm64.dll | Out-String)
@@ -355,7 +359,7 @@ jobs:
           Write-Host 'Windows x64 and ARM64 DLL architectures verified.'
       - id: candidate
         name: Commit and push Windows libraries
-        shell: pwsh
+        shell: powershell
         env:
           RELEASE_BRANCH: ${{ github.ref_name }}
         run: |
@@ -371,8 +375,9 @@ jobs:
           } elseif ($LASTEXITCODE -ne 0) { throw 'Inspecting Windows library changes failed.' }
           git push origin "HEAD:$env:RELEASE_BRANCH"
           if ($LASTEXITCODE -ne 0) { throw 'Pushing Windows libraries failed.' }
-          "commit=$(git rev-parse HEAD)" >> $env:GITHUB_OUTPUT
+          $candidateCommit = git rev-parse HEAD
           if ($LASTEXITCODE -ne 0) { throw 'Reading Windows candidate commit failed.' }
+          "commit=$candidateCommit" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
   candidate_static_checks:
     name: Candidate static and package checks
@@ -558,7 +563,7 @@ jobs:
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
       - name: Build and run Windows tests
-        shell: pwsh
+        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           @"
