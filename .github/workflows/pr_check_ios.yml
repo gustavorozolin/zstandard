@@ -141,7 +141,8 @@ jobs:
 
       - name: Boot an isolated iOS simulator
         id: ios-simulator
-        timeout-minutes: 4
+        # Includes three bounded setup commands and the ten-minute cold boot.
+        timeout-minutes: 12
         run: python3 .github/scripts/start_ios_simulator.py
 
       - name: Run integration tests
@@ -154,6 +155,7 @@ jobs:
 
       - name: Capture iOS simulator diagnostics
         if: failure()
+        timeout-minutes: 3
         run: |
           DEVICE_ID="${{ steps.ios-simulator.outputs.device-id }}"
           {
@@ -178,6 +180,7 @@ jobs:
 
       - name: Remove this job's iOS simulator
         if: ${{ always() && steps.ios-simulator.outputs.device-id != '' }}
+        timeout-minutes: 3
         env:
           DEVICE_ID: ${{ steps.ios-simulator.outputs.device-id }}
         run: |
