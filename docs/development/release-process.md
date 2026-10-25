@@ -60,6 +60,10 @@ preparation; do not bump or generate them locally before starting that phase.
    Windows application validation runs on the trusted self-hosted desktops.
 5. All candidate tests check out the final native-build commit. Static,
    formatting, package, platform release-build and integration gates must pass.
+   Resolve all ten packages against the local candidate before formatting,
+   so each formatter uses its declared Dart language version. Linux package
+   tests load the plugin from the freshly built release bundle; Web integration
+   starts its driver inside Xvfb without relying on exported Bash functions.
    The final gate rejects a moved release tip and uploads
    `release-candidate-X.Y.Z`, recording commit/tree, issue and run/attempt.
 6. Only then does `prepare_deployment_action` open Copilot's normal production

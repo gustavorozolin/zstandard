@@ -390,22 +390,29 @@ jobs:
       - uses: ./.github/actions/setup-flutter
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
+      - uses: ./.github/actions/prepare-candidate-dependencies
+      - name: Test Web integration launcher
+        run: python3 -m unittest discover -s scripts/tests -p test_web_integration_runner.py -v
       - name: Verify all release metadata and package tests
         env:
           VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          printf 'dependency_overrides:\n  zstandard_native:\n    path: ../zstandard_native\n' > zstandard_cli/pubspec_overrides.yaml
-          printf 'dependency_overrides:\n  zstandard_android:\n    path: ../zstandard_android\n  zstandard_ios:\n    path: ../zstandard_ios\n  zstandard_linux:\n    path: ../zstandard_linux\n  zstandard_macos:\n    path: ../zstandard_macos\n  zstandard_native:\n    path: ../zstandard_native\n  zstandard_platform_interface:\n    path: ../zstandard_platform_interface\n  zstandard_web:\n    path: ../zstandard_web\n  zstandard_windows:\n    path: ../zstandard_windows\n' > zstandard/pubspec_overrides.yaml
-          trap 'rm -f zstandard_cli/pubspec_overrides.yaml zstandard/pubspec_overrides.yaml' EXIT
           dart scripts/check_pub_metadata.dart --release-version "$VERSION"
-          (cd zstandard_platform_interface && flutter pub get && flutter analyze && flutter test)
-          (cd zstandard_native && dart pub get && dart analyze)
-          (cd zstandard_cli && dart pub get && dart analyze && dart test)
-          (cd zstandard && flutter pub get && flutter analyze && flutter test)
           for package in zstandard_platform_interface zstandard_native zstandard_android zstandard_ios zstandard_linux zstandard_macos zstandard_web zstandard_windows zstandard_cli zstandard; do
-            (cd "$package" && dart format --output=none --set-exit-if-changed .)
+            (
+              cd "$package"
+              case "$package" in
+                zstandard_native|zstandard_cli) dart pub get ;;
+                *) flutter pub get ;;
+              esac
+              dart format --output=none --set-exit-if-changed .
+            )
           done
+          (cd zstandard_platform_interface && flutter analyze && flutter test)
+          (cd zstandard_native && dart analyze)
+          (cd zstandard_cli && dart analyze && dart test)
+          (cd zstandard && flutter analyze && flutter test)
           git diff --check
 
   candidate_android:
@@ -494,9 +501,13 @@ jobs:
           printf 'dependency_overrides:\n  zstandard_native:\n    path: ../../zstandard_native\n  zstandard_platform_interface:\n    path: ../../zstandard_platform_interface\n' > zstandard_linux/example/pubspec_overrides.yaml
           printf 'dependency_overrides:\n  zstandard_native:\n    path: ../zstandard_native\n  zstandard_platform_interface:\n    path: ../zstandard_platform_interface\n' > zstandard_linux/pubspec_overrides.yaml
           trap 'rm -f zstandard_linux/pubspec_overrides.yaml zstandard_linux/example/pubspec_overrides.yaml' EXIT
-          (cd zstandard_linux && flutter pub get && flutter analyze && flutter test)
+          (cd zstandard_linux && flutter pub get && flutter analyze)
           (cd zstandard_linux/example && flutter pub get)
           (cd zstandard_linux/example && flutter build linux --release)
+          plugin_library=$(find zstandard_linux/example/build/linux -type f -path '*/release/bundle/lib/libzstandard_linux_plugin.so' -print -quit)
+          test -n "$plugin_library"
+          plugin_directory="$(cd "$(dirname "$plugin_library")" && pwd)"
+          (cd zstandard_linux && LD_LIBRARY_PATH="$plugin_directory${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" flutter test)
           bash scripts/test_linux_integration.sh
           cmake_build_dir=$(find zstandard_linux/example/build/linux -type f -name CMakeCache.txt -not -path '*/_deps/*' -print | sed 's#/CMakeCache.txt$##' | sort | tail -n 1)
           test -n "$cmake_build_dir"

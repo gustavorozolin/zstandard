@@ -20,7 +20,7 @@ class ReleaseBuildTests(unittest.TestCase):
     def setUp(self):
         self.folder = tempfile.TemporaryDirectory(prefix='zstd-release-build-')
         self.addCleanup(self.folder.cleanup)
-        self.root = Path(self.folder.name) / 'workspace with spaces'
+        self.root = Path(self.folder.name).resolve() / 'workspace with spaces'
         self.root.mkdir()
         template = Path(self.folder.name) / 'template'
         template.mkdir()
@@ -111,6 +111,99 @@ class ReleaseBuildTests(unittest.TestCase):
         result = self.run_command(command)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertTrue((existing / 'CMakeFiles').is_dir())
+
+    def static_fixture(self):
+        packages = ['zstandard_platform_interface', 'zstandard_native', 'zstandard_android',
+                    'zstandard_ios', 'zstandard_linux', 'zstandard_macos', 'zstandard_web',
+                    'zstandard_windows', 'zstandard_cli', 'zstandard']
+        for package in packages:
+            (self.root / package).mkdir(exist_ok=True)
+        self.git('init', '-q')
+        tools = self.root / 'tools'
+        tools.mkdir()
+        tool = '''#!/usr/bin/env python3
+import json,os,sys
+from pathlib import Path
+package=Path.cwd().name
+args=sys.argv[1:]
+if args[:2]==['pub','get']:
+    with open(os.environ['TRACE'],'a') as trace:
+        trace.write(json.dumps(['get',package])+'\\n')
+    if package==os.environ.get('FAIL_RESOLVE'):
+        sys.exit(23)
+    Path('.resolved').touch()
+elif args and args[0]=='format':
+    with open(os.environ['TRACE'],'a') as trace:
+        trace.write(json.dumps(['format',package])+'\\n')
+    if not Path('.resolved').exists():
+        sys.exit(31)
+'''
+        for name in ['dart', 'flutter']:
+            (tools / name).write_text(tool)
+            (tools / name).chmod(0o700)
+        trace = self.root / 'trace'
+        trace.touch()
+        self.env.update(PATH=str(tools) + os.pathsep + self.env['PATH'],
+                        VERSION='1.6.0', TRACE=str(trace))
+        script = next(step['run'] for step in WORKFLOW['jobs']['candidate_static_checks']['steps']
+                      if step.get('name') == 'Verify all release metadata and package tests')
+        return packages, trace, script
+
+    def test_static_checks_resolve_each_package_before_formatting(self):
+        packages, trace, script = self.static_fixture()
+        result = self.run_command(script)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        calls = [json.loads(line) for line in trace.read_text().splitlines()]
+        self.assertEqual(sorted(package for kind, package in calls if kind == 'format'),
+                         sorted(packages))
+
+    def test_static_checks_do_not_hide_dependency_resolution_failure(self):
+        _, trace, script = self.static_fixture()
+        self.env['FAIL_RESOLVE'] = 'zstandard_android'
+        result = self.run_command(script)
+        self.assertNotEqual(result.returncode, 0)
+        calls = [json.loads(line) for line in trace.read_text().splitlines()]
+        self.assertIn(['get', 'zstandard_android'], calls)
+        self.assertNotIn(['format', 'zstandard_android'], calls)
+
+    def test_linux_vm_tests_load_the_freshly_built_plugin(self):
+        self.git('init', '-q')
+        (self.root / 'zstandard_linux/example').mkdir(parents=True)
+        tools = self.root / 'tools'
+        tools.mkdir()
+        flutter = tools / 'flutter'
+        flutter.write_text('''#!/usr/bin/env python3
+import json,os,sys
+from pathlib import Path
+args=sys.argv[1:]
+if args[:2]==['build','linux']:
+    build=Path('build/linux/x64/release')
+    (build/'bundle/lib').mkdir(parents=True)
+    (build/'bundle/lib/libzstandard_linux_plugin.so').write_bytes(b'fixture plugin')
+    (build/'CMakeCache.txt').touch()
+elif args and args[0]=='test':
+    search=os.environ.get('LD_LIBRARY_PATH','').split(os.pathsep)
+    with open(os.environ['TRACE'],'a') as trace:
+        trace.write(json.dumps({'kind':'vm-test','search':search})+'\\n')
+    if not any((Path(path)/'libzstandard_linux_plugin.so').is_file() for path in search):
+        sys.exit(32)
+''')
+        flutter.chmod(0o700)
+        for name in ['cmake', 'ctest']:
+            (tools / name).write_text('#!/bin/sh\nexit 0\n')
+            (tools / name).chmod(0o700)
+        (self.root / 'scripts').mkdir()
+        (self.root / 'scripts/test_linux_integration.sh').write_text('exit 0\n')
+        trace = self.root / 'trace'
+        self.env.update(PATH=str(tools) + os.pathsep + self.env['PATH'], TRACE=str(trace))
+        script = next(step['run'] for step in WORKFLOW['jobs']['candidate_linux']['steps']
+                      if step.get('name') == 'Build, run native tests and run integration tests')
+        result = self.run_command(script)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        calls = [json.loads(line) for line in trace.read_text().splitlines()]
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0]['search'][0],
+                         str(self.root / 'zstandard_linux/example/build/linux/x64/release/bundle/lib'))
 
     def test_release_admission_rejects_other_branches_before_checkout(self):
         script = WORKFLOW['jobs']['validate']['steps'][0]['with']['script']
