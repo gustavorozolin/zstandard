@@ -126,6 +126,8 @@ jobs:
       - name: Set up Android SDK tools
         uses: android-actions/setup-android@v4
 
+      - uses: ./.github/actions/prepare-android-gradle
+
       - name: Verify Android SDK prerequisites
         run: bash scripts/check_android_ci_prerequisites.sh
 
@@ -144,6 +146,11 @@ jobs:
       - name: Build Android debug APKs for all supported Flutter ABIs
         working-directory: zstandard_android/${{ matrix.example }}
         run: flutter build apk --debug --split-per-abi --target-platform android-arm,android-arm64,android-x64
+
+      - name: Diagnose Gradle configuration failures
+        if: failure()
+        working-directory: zstandard_android/${{ matrix.example }}/android
+        run: bash ./gradlew --no-daemon help --stacktrace
 
       - name: Verify selected Gradle runtime
         working-directory: zstandard_android/${{ matrix.example }}/android

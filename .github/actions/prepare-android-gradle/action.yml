@@ -1,0 +1,17 @@
+name: Prepare private Android Gradle state
+description: Avoid persistent runner Gradle caches and select the job JDK.
+runs:
+  using: composite
+  steps:
+    - name: Isolate Gradle and select the job JDK
+      shell: bash
+      run: |
+        set -euo pipefail
+        gradle_root="$(mktemp -d "$RUNNER_TEMP/zstandard-gradle.XXXXXX")"
+        # RUNNER_TEMP is removed by the runner after this job. Never clear the
+        # operator's Gradle cache or stop daemons owned by other jobs.
+        printf 'org.gradle.daemon=false\norg.gradle.workers.max=2\n' > "$gradle_root/gradle.properties"
+        printf 'GRADLE_USER_HOME=%s\n' "$gradle_root" >> "$GITHUB_ENV"
+        # Flutter otherwise prefers an installed Android Studio JBR. The
+        # setup-flutter launcher keeps this setting in the job's own profile.
+        flutter config --jdk-dir="${JAVA_HOME:?The job JDK is required}"

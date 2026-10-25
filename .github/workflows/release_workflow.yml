@@ -430,6 +430,7 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: android-actions/setup-android@v4
+      - uses: ./.github/actions/prepare-android-gradle
       - name: Build, run native tests and run both Android suites
         run: |
           set -euo pipefail
@@ -441,6 +442,9 @@ jobs:
           (cd zstandard_android && flutter pub get && flutter analyze lib test && flutter test)
           bash scripts/check_android_ci_prerequisites.sh
           for example in example example_legacy; do
+            # Keep modern and legacy Gradle state separate within this job too.
+            mkdir -p "$GRADLE_USER_HOME/$example"
+            cp "$GRADLE_USER_HOME/gradle.properties" "$GRADLE_USER_HOME/$example/gradle.properties"
             if [[ "$example" == example ]]; then
               grep -F 'id "com.android.application" version "9.1.0" apply false' "zstandard_android/$example/android/settings.gradle"
               grep -F 'gradle-9.3.1-all.zip' "zstandard_android/$example/android/gradle/wrapper/gradle-wrapper.properties"
@@ -448,13 +452,14 @@ jobs:
               grep -F 'id "com.android.application" version "8.11.1" apply false' "zstandard_android/$example/android/settings.gradle"
               grep -F 'gradle-8.14-all.zip' "zstandard_android/$example/android/gradle/wrapper/gradle-wrapper.properties"
             fi
-            (cd "zstandard_android/$example" && flutter pub get && flutter clean && flutter pub get && flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64,android-x64)
+            (export GRADLE_USER_HOME="$GRADLE_USER_HOME/$example"; cd "zstandard_android/$example" && flutter pub get && flutter clean && flutter pub get && flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64,android-x64)
             bash scripts/check_android_apk_abis.sh "zstandard_android/$example/build/app/outputs/flutter-apk" release
           done
           bash scripts/run_android_emulator_ci.sh bash -c '
             set -euo pipefail
             for example in example example_legacy; do
               (
+                export GRADLE_USER_HOME="$GRADLE_USER_HOME/$example"
                 cd "zstandard_android/$example"
                 timeout --foreground 10m flutter test integration_test/android_compression_integration_test.dart -d "emulator-${EMULATOR_PORT}" --reporter expanded
                 timeout --foreground 10m flutter test integration_test/android_properties_integration_test.dart -d "emulator-${EMULATOR_PORT}" --reporter expanded

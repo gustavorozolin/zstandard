@@ -51,3 +51,10 @@ search variables that would override the NDK sysroot. The mixed x86_64/AArch64
 release job retains private native metadata and clears those variables only
 for the cross build, preserving the AArch64 compiler sysroot. WebAssembly
 regeneration uses the same isolation for Emscripten.
+
+Android integration and candidate builds use `prepare-android-gradle` after JDK
+setup. Its job-owned Gradle home bypasses persistent runner caches, bounds worker
+concurrency and keeps daemons local to the invocation. Candidate validation also
+separates modern and legacy consumer caches. Flutter selects the job's JDK in its
+private settings profile; the operator's Gradle cache and Flutter settings stay
+unchanged.
