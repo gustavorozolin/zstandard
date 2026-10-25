@@ -36,6 +36,10 @@ jobs:
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
 
+      - uses: ./.github/actions/prepare-candidate-dependencies
+        with:
+          source: workspace
+
       - name: Get dependencies
         working-directory: zstandard_macos
         run: flutter pub get
@@ -78,6 +82,10 @@ jobs:
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
 
+      - uses: ./.github/actions/prepare-candidate-dependencies
+        with:
+          source: ${{ matrix.source }}
+
       - name: Select native dependency manager
         run: |
           if [[ "${{ matrix.dependency_manager }}" == "swiftpm" ]]; then
@@ -85,15 +93,6 @@ jobs:
           else
             flutter config --no-enable-swift-package-manager
           fi
-
-      - name: Use checkout for SwiftPM native dependency
-        if: matrix.dependency_manager == 'swiftpm' && matrix.source == 'workspace'
-        run: echo "ZSTANDARD_NATIVE_PACKAGE_PATH=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
-
-      - name: Hide workspace native package to force Pub cache resolution
-        if: matrix.source == 'pub-cache'
-        run: |
-          mv zstandard_native "$RUNNER_TEMP/zstandard_native"
 
       - name: Clean plugin and example
         run: |
@@ -157,12 +156,12 @@ jobs:
             rm "$framework_copy"
           fi
 
-      - name: Restore workspace native package
-        if: always() && matrix.source == 'pub-cache'
+      - name: Restore this job's native workspace
+        if: ${{ always() && env.ZSTANDARD_NATIVE_ORIGINAL_PATH != '' }}
         run: |
-          if [[ -d "$RUNNER_TEMP/zstandard_native" ]]; then
-            mv "$RUNNER_TEMP/zstandard_native" zstandard_native
-          fi
+          set -euo pipefail
+          test ! -e zstandard_native && test ! -L zstandard_native
+          mv "$ZSTANDARD_NATIVE_ORIGINAL_PATH" zstandard_native
 
   check_macos_publish_dry_run:
     name: Dry Run Publish macOS
@@ -182,6 +181,10 @@ jobs:
       - uses: ./.github/actions/setup-flutter
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
+
+      - uses: ./.github/actions/prepare-candidate-dependencies
+        with:
+          source: workspace
 
       - name: Get dependencies
         working-directory: zstandard_macos

@@ -24,7 +24,7 @@ class PackagePreparationTests(unittest.TestCase):
         self.folder = tempfile.TemporaryDirectory()
         self.addCleanup(self.folder.cleanup)
         self.workspace = Path(self.folder.name)
-        files = ['CHANGELOG.md', '.github/scripts/update_versions.dart',
+        files = ['zstandard_native/UPSTREAM_ZSTD.md', 'zstandard_cli/lib/src/cli_runner.dart', 'CHANGELOG.md', '.github/scripts/update_versions.dart',
                  'scripts/check_pub_metadata.dart', 'zstandard_native/src/zstd/zstd.h',
                  'zstandard_ios/ios/zstandard_ios/Package.swift',
                  'zstandard_macos/macos/zstandard_macos/Package.swift',
@@ -40,7 +40,9 @@ class PackagePreparationTests(unittest.TestCase):
         build.write_text('''set -eu
 for folder in zstandard_web/blob zstandard_web/example/web zstandard/example/web; do
   mkdir -p "$folder"
-  printf 'fixture-js' > "$folder/zstd.js"
+  for file in zstd.js zstd_core.js zstd_worker.js; do
+    printf 'fixture-js' > "$folder/$file"
+  done
   printf 'fixture-wasm' > "$folder/zstd.wasm"
 done
 ''')
@@ -85,11 +87,13 @@ done
         self.assertEqual(before, (self.workspace / 'CHANGELOG.md').read_bytes())
 
     def test_resume_rejects_corrupt_artifacts_without_rewriting_them(self):
-        self.assertEqual(self.prepare().returncode, 0)
-        broken = self.workspace / 'zstandard/example/web/zstd.wasm'
-        broken.write_bytes(b'broken')
-        self.assertNotEqual(self.prepare(resume=True).returncode, 0)
-        self.assertEqual(broken.read_bytes(), b'broken')
+        for artifact in ['zstd.js', 'zstd_core.js', 'zstd_worker.js', 'zstd.wasm']:
+            with self.subTest(artifact=artifact):
+                self.assertEqual(self.prepare().returncode, 0)
+                broken = self.workspace / 'zstandard/example/web' / artifact
+                broken.write_bytes(b'broken')
+                self.assertNotEqual(self.prepare(resume=True).returncode, 0)
+                self.assertEqual(broken.read_bytes(), b'broken')
 
 
 if __name__ == '__main__':

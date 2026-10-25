@@ -84,8 +84,14 @@ runs:
         git diff --check
         for generated in \
           zstandard_web/blob/zstd.js \
+          zstandard_web/blob/zstd_core.js \
+          zstandard_web/blob/zstd_worker.js \
           zstandard_web/example/web/zstd.js \
-          zstandard/example/web/zstd.js; do
+          zstandard_web/example/web/zstd_core.js \
+          zstandard_web/example/web/zstd_worker.js \
+          zstandard/example/web/zstd.js \
+          zstandard/example/web/zstd_core.js \
+          zstandard/example/web/zstd_worker.js; do
           test -s "$generated"
         done
         for generated in \
@@ -96,5 +102,9 @@ runs:
         done
         cmp zstandard_web/blob/zstd.js zstandard_web/example/web/zstd.js
         cmp zstandard_web/blob/zstd.js zstandard/example/web/zstd.js
+        cmp zstandard_web/blob/zstd_core.js zstandard_web/example/web/zstd_core.js
+        cmp zstandard_web/blob/zstd_core.js zstandard/example/web/zstd_core.js
+        cmp zstandard_web/blob/zstd_worker.js zstandard_web/example/web/zstd_worker.js
+        cmp zstandard_web/blob/zstd_worker.js zstandard/example/web/zstd_worker.js
         cmp zstandard_web/blob/zstd.wasm zstandard_web/example/web/zstd.wasm
         cmp zstandard_web/blob/zstd.wasm zstandard/example/web/zstd.wasm

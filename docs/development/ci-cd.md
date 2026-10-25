@@ -1,44 +1,74 @@
 # CI/CD
 
-This document describes the continuous integration and deployment setup for the Zstandard plugin and CLI, including GitHub Actions workflows and how to use them.
+## Pull requests
 
-## Overview
+`pull_request.yml` is the untrusted-code safety gate. It runs on GitHub-hosted
+Ubuntu with read-only contents permission, resolves monorepo dependencies,
+formats and analyzes all ten packages, executes every available VM/unit test,
+and validates metadata, generated Web artifacts, and shell syntax. A required
+hosted matrix collects coverage for the CLI, platform interface, and main
+package on every pull-request head, enforces their package-specific thresholds,
+and uploads the three matching Codecov flags for trusted same-repository pull
+requests. Forks run the same coverage gates without receiving the upload token.
+Its final
+`Pull Request Safety Gate` job is the stable required-check context; repository
+rules should require that one context on both `master` and `develop` rather
+than coupling protection to individual matrix-entry names.
 
-The repository uses **GitHub Actions** for:
+Untrusted pull-request code is never sent to persistent self-hosted runners.
+The platform-heavy workflows (`pr_check_*.yml`, retained under their historic
+names) run only on trusted pushes to `develop` or by explicit manual dispatch.
+They provide Android emulator/instrumentation, Linux desktop, ChromeDriver,
+Windows desktop/native, and both SwiftPM and CocoaPods Apple integration. They
+also run publish dry-runs and coverage where applicable.
 
-- **PR checks**: Analyze and test each package on pull requests (open or new commits; except to protected branches).
-- **Release workflow**: Version bumping, building precompiled CLI libraries, tagging, and publishing to pub.dev.
-- **Hotfix workflow**: Expedited fixes and releases when needed.
+Every third-party action reference is pinned to a full commit SHA. Copilot
+automation uses `pull_request_target` or issue metadata without checking out
+untrusted pull-request code, grants read-only repository contents, and only
+uses its PAT for OWNER, MEMBER, or COLLABORATOR actors.
 
-Workflows are in [`.github/workflows/`](https://github.com/vypdev/zstandard/tree/master/.github/workflows).
+## Release workflows
 
-## PR check workflows
+- `release_workflow.yml` (**Task - Prepare Release**) runs only by manual
+  dispatch on `release/X.Y.Z`. It mutates the release branch, builds native
+  artifacts, and validates the complete candidate. It neither tags nor
+  publishes.
+- `publish_workflow.yml` (**Publish Tagged Release**) runs only for a stable
+  `vX.Y.Z` tag, validates that it points to the matching release-branch tip,
+  publishes all packages with OIDC on the trusted self-hosted Linux runners, verifies pub.dev,
+  and creates the GitHub release.
+- `integrate_release.yml` (**Integrate Published Release**) is a separate
+  manual workflow. It verifies the completed publication and opens reviewed
+  pull requests into `master` and `develop`; it never merges or bypasses
+  branch protection.
 
-Each package has a dedicated workflow that runs on pull requests (open or new commits to the PR branch) to non-protected branches:
+Both workflows share one non-cancelling concurrency group, preventing two
+publication state machines from overlapping.
 
-| Workflow file | Package | Runner | Steps |
-|---------------|---------|--------|--------|
-| `pr_check_zstandard.yml` | zstandard | self-hosted Linux | Analyze, Test (with coverage), Publish dry run |
-| `pr_check_android.yml` | zstandard_android | self-hosted Linux | Analyze, Build APK, Android emulator integration tests, Publish dry run |
-| `pr_check_ios.yml` | zstandard_ios | self-hosted macOS ARM64 | Analyze, build, headless simulator launch, SwiftPM and CocoaPods integration tests from checkout and Pub cache, Publish dry run |
-| `pr_check_macos.yml` | zstandard_macos | self-hosted macOS ARM64 | Analyze, build, launch, SwiftPM and CocoaPods integration tests from checkout and Pub cache, Publish dry run |
-| `pr_check_linux.yml` | zstandard_linux | self-hosted Linux | Analyze, Build Linux app, Linux integration tests, Publish dry run |
-| `pr_check_windows.yml` | zstandard_windows | self-hosted Windows X64 | Analyze, build, native C++ tests, Dart tests, Windows integration tests, Publish dry run |
-| `pr_check_web.yml` | zstandard_web | self-hosted Linux | Analyze, Build Web app, ChromeDriver integration tests, Publish dry run |
-| `pr_check_cli.yml` | zstandard_cli | self-hosted Linux | Analyze, Test (with coverage), Publish dry run |
-| `pr_check_platform_interface.yml` | zstandard_platform_interface | self-hosted Linux | Analyze, Test (with coverage), Publish dry run |
+## Runner trust and requirements
 
-There is no dedicated PR check workflow for **zstandard_native** (it has no Dart tests; it mainly ships C source and bindings). It is published in the release workflow after `platform_interface` and before the platform packages that depend on it.
+Self-hosted Linux, Windows, and macOS runners are persistent trusted release
+infrastructure. They must not be exposed to fork pull requests. Linux needs
+the native/GTK toolchain, Android SDK/Java 17, Chrome, and optional AArch64
+cross-tools. Windows needs Visual Studio C++/CMake and an interactive desktop.
+Apple needs Xcode, simulator runtimes, CocoaPods, and a logged-in WindowServer
+session for macOS integration.
 
-Pull request checks run for pull requests targeting any branch except `master`. Push checks run on `develop` so the branch itself is continuously verified.
+The local composite actions verify the pinned Flutter 3.47.2 toolchain.
+Platform workflows build release candidates as well as debug test hosts;
+missing infrastructure is a failure rather than a silent skip.
 
-**Concurrency**: Only the latest run per branch/PR is kept; in-progress runs are cancelled when new commits are pushed to the PR.
+## Local equivalents
 
-### Coverage
+Use `dart scripts/create_local_overrides.dart <package>` before resolving an
+individual monorepo package; the `.sh` wrapper remains available on Unix-like
+systems. Run `dart format --output=none
+--set-exit-if-changed .`, the appropriate analyzer/test command, and the
+platform integration script. `scripts/check_pub_metadata.dart` validates the
+publication contract; `scripts/build_web_wasm.sh` regenerates Web artifacts.
 
-- Flutter packages: `flutter test --coverage` produces `coverage/lcov.info` in the package directory.
-- CLI package: `dart test --coverage=coverage` then `dart run coverage:format_coverage` to produce lcov.
-- Coverage is uploaded to **Codecov** via the `codecov/codecov-action@v4` step. Upload failures are job failures because coverage reporting is part of the check contract.
+See [Testing](testing.md), [Self-hosted CI](self-hosted-ci.md), and
+[Release process](release-process.md).
 
 ### Self-hosted Linux runner contract
 
@@ -82,59 +112,27 @@ Apple workflows use the self-hosted ARM64 Mac runner and validate both native de
 
 Windows jobs target `[self-hosted, Windows, X64]`. The workflow installs and caches the pinned Flutter SDK on each runner, then enables Windows desktop support and verifies CMake. Each runner must provide a Visual Studio C++ desktop toolchain and an interactive desktop session because Flutter's Windows integration tests launch the compiled example application.
 
-The Windows workflow builds and tests the implementation package from the repository and from the published `zstandard_native` package in the Pub cache. Each path runs the native C++ zstd round-trip tests, Dart package tests, and launched Flutter integration tests. A separate job runs the federated `zstandard/example` application to verify the public plugin entry point on Windows.
+The Windows workflow builds and tests the implementation package from the repository and from the exact candidate in a private Pub-cache-shaped tree. Each path runs the native C++ zstd round-trip tests, Dart package tests, and launched Flutter integration tests. A separate job runs the federated `zstandard/example` application to verify the public plugin entry point on Windows.
 
-## Release workflow
 
-**File**: [`.github/workflows/release_workflow.yml`](https://github.com/vypdev/zstandard/blob/master/.github/workflows/release_workflow.yml)
+## Unpublished API candidates
 
-Triggered manually (**workflow_dispatch**) with inputs such as version, title, changelog, and optional issue reference.
+The integrity audit adds `ZstandardNativeCodec` and bounded decompression to
+packages whose current published 1.5.0 versions do not contain those APIs.
+All PR jobs resolve matched monorepo dependencies through the reviewed
+`prepare-candidate-dependencies` action. Native matrices retain workspace
+and `pub-cache` source layouts: the latter copies only tracked candidate
+files into a job-private `hosted/pub.dev/zstandard_native-<version>` tree and
+a separate Swift package root, then hides the workspace native package.
+This tests discovery outside the checkout; it is not evidence of a new
+pub.dev publication. The interface and platform dependencies remain matched
+to the candidate through generated local overrides. Originals are restored
+from this job's private backup after native checks.
 
-**Main phases**:
-
-1. **Prepare candidate**: Require `release/x.y.z`, bump all package versions/dependencies, pin SwiftPM to the exact version, update CocoaPods podspecs, copy CHANGELOG, and regenerate WebAssembly from `zstandard_native/src/zstd/`.
-2. **Build precompiled CLI libraries** (on platform-specific runners):
-   - **macOS**: Cross-compile x86_64 and ARM64 from the canonical C source, merge with `lipo` into a universal `libzstandard_macos.dylib`, and assert both slices; commit.
-   - **Linux**: Build x86_64 and ARM64 `.so` files from the canonical C source and assert ELF machine headers; commit.
-   - **Windows**: Detect the installed Visual Studio generator, build x64 and ARM64 DLLs, and assert PE machine headers; commit.
-3. **Candidate verification**: Build and execute Android (AGP 9 and legacy), Linux, Web, Windows, and both Apple dependency-manager variants. Candidate jobs use local overrides until their pub.dev versions exist.
-4. **Tag and release**: Create one immutable git tag and a draft GitHub release with changelog and checksums.
-5. **Publish**: Publish packages to pub.dev in dependency order: **platform_interface → zstandard_native** (shared C source) **→ platform implementations** (android, ios, macos, linux, windows, web) **→ zstandard_cli → zstandard**.
-6. **Verify and finalize**: Verify all ten package versions through the pub.dev API, finalize the draft release, and notify. The optional launcher-issue notification uses Copilot v3; branch integration into `develop` and `master` requires separate reviewed pull requests.
-
-The workflow uses **self-hosted** runners for macOS, Linux, and Windows to build native binaries and run platform-specific steps.
-
-## Hotfix workflow
-
-**File**: [`.github/workflows/hotfix_workflow.yml`](https://github.com/vypdev/zstandard/blob/master/.github/workflows/hotfix_workflow.yml)
-
-Prepares versioned fixes through the same `prepare-package-release` action as releases, using the ARM64 macOS runner for pinned Flutter, package/Apple metadata and generated Wasm verification. The action has a three-case contract test budget, including idempotent preparation and corrupt-artifact rejection on resume. Copilot then manages production promotion and its accepted tag/GitHub Release. This hotfix route does not publish packages to pub.dev; use the complete release pipeline for package publication. See [Release process](release-process.md).
-
-## Running checks locally
-
-To mimic CI locally:
-
-- **Analyze**: `flutter analyze` or `dart analyze` in each package.
-- **Test**: `flutter test` or `dart test` in each package.
-- **Build**: `flutter build apk --debug`, `flutter build linux --debug`, or `flutter build web --release` for the platform examples before integration tests.
-- **Test with coverage**: `flutter test --coverage` (Flutter) or `dart test --coverage=coverage` then format (CLI).
-- **All packages**: Use the [test scripts](../../scripts/) (e.g. `./scripts/test_all.sh` or `scripts\test_all.bat`).
-
-## Build automation scripts
-
-Scripts under [**scripts/**](https://github.com/vypdev/zstandard/tree/master/scripts) help build native libraries and run tests locally:
-
-- `build_macos.sh`, `build_linux.sh`, `build_windows.bat`: Build precompiled zstd libraries for the CLI.
-- `build_android.sh`, `build_ios.sh`: Build or prepare the Android/iOS plugin.
-- Swift Package Manager consumes the canonical zstd C source through the repository-level `Package.swift`; the sync scripts refresh only the ignored `Classes/zstd/` compatibility trees used by CocoaPods.
-- `regenerate_bindings.sh`: Regenerate FFI bindings (ffigen) for all platform packages after zstd source updates.
-- `test_all.sh` / `test_all.bat`: Run tests in all packages.
-- `coverage_report.sh` / `coverage_report.bat`: Generate coverage reports.
-
-See the script contents and [Building](building.md) for requirements (CMake, NDK, Xcode, etc.).
-
-## See also
-
-- [Release process](release-process.md)
-- [Testing](testing.md)
-- [Building](building.md)
+Seven filesystem regression tests cover 14 distinct inputs: workspace and
+private-cache success, four invalid source values, missing CI output, five
+malformed versions, tracked source drift and an escaping tracked symlink.
+They exercise the actual Dart staging helper. The platform matrices continue
+to build and launch their real native hosts; these fixtures replace none of
+those checks. Release preparation updates all package versions and minimum
+inter-package dependencies together before any immutable tag or publication.

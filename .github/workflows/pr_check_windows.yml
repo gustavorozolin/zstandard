@@ -32,6 +32,10 @@ jobs:
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
 
+      - uses: ./.github/actions/prepare-candidate-dependencies
+        with:
+          source: workspace
+
       - name: Get dependencies
         working-directory: zstandard_windows
         shell: cmd
@@ -55,6 +59,10 @@ jobs:
       - uses: ./.github/actions/setup-flutter-windows
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
+
+      - uses: ./.github/actions/prepare-candidate-dependencies
+        with:
+          source: workspace
 
       - name: Get dependencies
         working-directory: zstandard_windows
@@ -147,11 +155,9 @@ jobs:
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
 
-      - name: Remove zstandard_native to force resolution from pub cache
-        shell: cmd
-        run: |
-          @echo off
-          if exist zstandard_native rmdir /s /q zstandard_native
+      - uses: ./.github/actions/prepare-candidate-dependencies
+        with:
+          source: pub-cache
 
       - name: Clean and get dependencies (force pub cache)
         working-directory: zstandard_windows
@@ -212,6 +218,14 @@ jobs:
         shell: cmd
         run: call flutter test integration_test/windows_integration_test.dart -d windows
 
+      - name: Restore this job's native workspace
+        if: ${{ always() && env.ZSTANDARD_NATIVE_ORIGINAL_PATH != '' }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (Test-Path -LiteralPath zstandard_native) { throw 'Refusing to overwrite the native workspace.' }
+          Move-Item -LiteralPath $env:ZSTANDARD_NATIVE_ORIGINAL_PATH -Destination zstandard_native
+
   check_windows_federated_example:
     name: Test federated Windows example
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
@@ -225,6 +239,10 @@ jobs:
       - uses: ./.github/actions/setup-flutter-windows
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
+
+      - uses: ./.github/actions/prepare-candidate-dependencies
+        with:
+          source: workspace
 
       - name: Clean and get federated example dependencies
         working-directory: zstandard/example
@@ -273,6 +291,10 @@ jobs:
       - uses: ./.github/actions/setup-flutter-windows
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
+
+      - uses: ./.github/actions/prepare-candidate-dependencies
+        with:
+          source: workspace
 
       - name: Get dependencies
         working-directory: zstandard_windows

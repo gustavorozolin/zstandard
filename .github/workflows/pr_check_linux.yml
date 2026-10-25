@@ -31,6 +31,10 @@ jobs:
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
 
+      - uses: ./.github/actions/prepare-candidate-dependencies
+        with:
+          source: workspace
+
       - name: Get dependencies
         working-directory: zstandard_linux
         run: flutter pub get
@@ -56,6 +60,10 @@ jobs:
       - uses: ./.github/actions/setup-flutter
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
+
+      - uses: ./.github/actions/prepare-candidate-dependencies
+        with:
+          source: workspace
 
       - name: Get dependencies
         working-directory: zstandard_linux
@@ -107,8 +115,9 @@ jobs:
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
 
-      - name: Remove zstandard_native to force resolution from pub cache
-        run: rm -rf zstandard_native
+      - uses: ./.github/actions/prepare-candidate-dependencies
+        with:
+          source: pub-cache
 
       - name: Clean and get dependencies (force pub cache)
         working-directory: zstandard_linux
@@ -142,6 +151,13 @@ jobs:
         working-directory: zstandard_linux/example
         run: xvfb-run --auto-servernum --server-args='-screen 0 1920x1080x24' flutter test integration_test/ -d linux
 
+      - name: Restore this job's native workspace
+        if: ${{ always() && env.ZSTANDARD_NATIVE_ORIGINAL_PATH != '' }}
+        run: |
+          set -euo pipefail
+          test ! -e zstandard_native && test ! -L zstandard_native
+          mv "$ZSTANDARD_NATIVE_ORIGINAL_PATH" zstandard_native
+
   check_linux_publish_dry_run:
     name: Dry Run Publish Linux
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
@@ -159,6 +175,10 @@ jobs:
       - uses: ./.github/actions/setup-flutter
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
+
+      - uses: ./.github/actions/prepare-candidate-dependencies
+        with:
+          source: workspace
 
       - name: Get dependencies
         working-directory: zstandard_linux

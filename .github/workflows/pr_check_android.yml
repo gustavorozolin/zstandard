@@ -36,6 +36,10 @@ jobs:
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
 
+      - uses: ./.github/actions/prepare-candidate-dependencies
+        with:
+          source: workspace
+
       - name: Get dependencies
         working-directory: zstandard_android
         run: flutter pub get
@@ -89,9 +93,9 @@ jobs:
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
 
-      - name: Remove zstandard_native to force resolution from pub cache
-        if: matrix.source == 'pub-cache'
-        run: mv zstandard_native "$RUNNER_TEMP/zstandard_native"
+      - uses: ./.github/actions/prepare-candidate-dependencies
+        with:
+          source: ${{ matrix.source }}
 
       - name: Get dependencies
         working-directory: zstandard_android/${{ matrix.example }}
@@ -189,12 +193,12 @@ jobs:
             ${{ runner.temp }}/zstandard_ci_test-*.txt
           if-no-files-found: ignore
 
-      - name: Restore workspace native package
-        if: always() && matrix.source == 'pub-cache'
+      - name: Restore this job's native workspace
+        if: ${{ always() && env.ZSTANDARD_NATIVE_ORIGINAL_PATH != '' }}
         run: |
-          if [[ -d "$RUNNER_TEMP/zstandard_native" ]]; then
-            mv "$RUNNER_TEMP/zstandard_native" zstandard_native
-          fi
+          set -euo pipefail
+          test ! -e zstandard_native && test ! -L zstandard_native
+          mv "$ZSTANDARD_NATIVE_ORIGINAL_PATH" zstandard_native
 
   check_android_publish_dry_run:
     name: Dry Run Publish Android
@@ -213,6 +217,10 @@ jobs:
       - uses: ./.github/actions/setup-flutter
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
+
+      - uses: ./.github/actions/prepare-candidate-dependencies
+        with:
+          source: workspace
 
       - name: Get dependencies
         working-directory: zstandard_android
