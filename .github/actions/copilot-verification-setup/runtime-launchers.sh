@@ -9,7 +9,7 @@ for tool in flutter dart; do
   test -x "$executable"
   {
     printf '#!/usr/bin/env bash\nset -euo pipefail\n'
-    for setting in CPATH LIBRARY_PATH PKG_CONFIG_PATH PKG_CONFIG_SYSROOT_DIR CMAKE_PREFIX_PATH; do
+    for setting in CPATH LIBRARY_PATH PKG_CONFIG_PATH PKG_CONFIG_SYSROOT_DIR CMAKE_PREFIX_PATH PUB_CACHE XDG_CONFIG_HOME; do
       value="${!setting-}"
       if [[ -n "$value" ]]; then
         printf 'export %s=%q\n' "$setting" "$value"

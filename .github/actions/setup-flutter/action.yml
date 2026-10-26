@@ -29,14 +29,12 @@ runs:
         state="$(mktemp -d "$RUNNER_TEMP/zstandard-flutter-profile.XXXXXX")"
         mkdir -p "$state/home" "$state/bin"
         for tool in flutter dart; do
-        cat > "$state/bin/$tool" <<'WRAPPER'
-        #!/bin/bash
-        set -euo pipefail
-        exec env HOME="$ZSTANDARD_FLUTTER_SETTINGS_HOME" \
-          XDG_CONFIG_HOME="$ZSTANDARD_FLUTTER_SETTINGS_HOME/.config" \
-          "$FLUTTER_ROOT/bin/${0##*/}" "$@"
-        WRAPPER
-        chmod 700 "$state/bin/$tool"
+          {
+            printf '#!/bin/bash\nset -euo pipefail\n'
+            printf 'exec env HOME=%q XDG_CONFIG_HOME=%q %q "$@"\n' \
+              "$state/home" "$state/home/.config" "$FLUTTER_ROOT/bin/$tool"
+          } > "$state/bin/$tool"
+          chmod 700 "$state/bin/$tool"
         done
         {
           printf 'ZSTANDARD_FLUTTER_SETTINGS_HOME=%s\n' "$state/home"

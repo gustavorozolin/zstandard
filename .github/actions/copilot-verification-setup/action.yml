@@ -4,6 +4,12 @@ description: Provision the tested Flutter/Dart SDK before project verification.
 runs:
   using: composite
   steps:
+    - name: Select private package and configuration paths
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p "$HOME/.pub-cache/bin" "$HOME/.config"
+        printf 'PUB_CACHE=%s\nXDG_CONFIG_HOME=%s\n' "$HOME/.pub-cache" "$HOME/.config" >> "$GITHUB_ENV"
     - name: Install the tested Flutter SDK
       uses: subosito/flutter-action@v2
       with:

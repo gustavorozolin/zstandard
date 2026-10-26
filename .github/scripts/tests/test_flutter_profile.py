@@ -15,9 +15,9 @@ import unittest
 ROOT = Path(__file__).resolve().parents[3]
 DART = shutil.which('dart')
 if DART:
-    embedded = Path(DART).resolve().parent / 'cache/dart-sdk/bin/dart'
-    if embedded.is_file():
-        DART = str(embedded)
+    candidates = [Path(os.environ.get('FLUTTER_ROOT', '')) / 'bin/cache/dart-sdk/bin/dart',
+                  Path(DART).resolve().parent / 'cache/dart-sdk/bin/dart']
+    DART = next((str(path) for path in candidates if path.is_file()), DART)
 
 
 @unittest.skipUnless(DART and os.name == 'posix', 'Unix Dart SDK is required')
@@ -81,6 +81,8 @@ class FlutterProfileTests(unittest.TestCase):
         self.write_reference(self.token_file(private_home, environment['XDG_CONFIG_HOME']),
                              'https://private-fixture.invalid')
         self.assertIn('private-fixture.invalid', self.list_tokens(str(wrapper), environment))
+        # Configured repository checks deliberately retain PATH only.
+        self.assertIn('private-fixture.invalid', self.list_tokens(str(wrapper), {'PATH': os.environ['PATH']}))
         self.assertEqual(environment['PUB_CACHE'], self.environment['PUB_CACHE'])
         self.assertEqual(self.original_store.read_bytes(), self.original_bytes)
 

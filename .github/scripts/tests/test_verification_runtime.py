@@ -25,7 +25,7 @@ class VerificationRuntimeTests(unittest.TestCase):
                 executable.write_text('''#!/usr/bin/env python3
 import json,os,sys
 from pathlib import Path
-keys=['CPATH','LD_LIBRARY_PATH','PKG_CONFIG_SYSROOT_DIR','UNRELATED_SECRET']
+keys=['CPATH','LD_LIBRARY_PATH','PKG_CONFIG_SYSROOT_DIR','PUB_CACHE','XDG_CONFIG_HOME','UNRELATED_SECRET']
 Path(os.environ['TRACE']).write_text(json.dumps({'args':sys.argv[1:],'env':{key:os.environ.get(key) for key in keys}}))
 ''')
                 executable.chmod(0o700)
@@ -36,6 +36,8 @@ Path(os.environ['TRACE']).write_text(json.dumps({'args':sys.argv[1:],'env':{key:
                            'HOME': str(profile), 'GITHUB_PATH': str(paths),
                            'CPATH': header_path, 'LD_LIBRARY_PATH': str(root / 'private libraries'),
                            'PKG_CONFIG_SYSROOT_DIR': str(root / 'sysroot with spaces'),
+                           'PUB_CACHE': str(profile / 'private cache'),
+                           'XDG_CONFIG_HOME': str(profile / '.config'),
                            'UNRELATED_SECRET': 'must-not-be-captured'}
             subprocess.run(['bash', str(ROOT / '.github/actions/copilot-verification-setup/runtime-launchers.sh')],
                            env=environment, check=True, timeout=10)
@@ -50,6 +52,8 @@ Path(os.environ['TRACE']).write_text(json.dumps({'args':sys.argv[1:],'env':{key:
                 self.assertEqual(result['args'], ['literal $(touch unexpected)', 'two words'])
                 self.assertEqual(result['env']['CPATH'], header_path)
                 self.assertEqual(result['env']['PKG_CONFIG_SYSROOT_DIR'], environment['PKG_CONFIG_SYSROOT_DIR'])
+                self.assertEqual(result['env']['PUB_CACHE'], environment['PUB_CACHE'])
+                self.assertEqual(result['env']['XDG_CONFIG_HOME'], environment['XDG_CONFIG_HOME'])
                 self.assertEqual(result['env']['LD_LIBRARY_PATH'].split(os.pathsep),
                                  [environment['LD_LIBRARY_PATH'], probe['LD_LIBRARY_PATH']])
                 self.assertIsNone(result['env']['UNRELATED_SECRET'])
