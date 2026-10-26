@@ -32,6 +32,8 @@ class FlutterProfileTests(unittest.TestCase):
         (sdk / 'bin').mkdir(parents=True)
         (sdk / 'bin/dart').write_text('#!/bin/bash\nexec ' + shlex.quote(DART) + ' "$@"\n')
         (sdk / 'bin/dart').chmod(0o700)
+        (sdk / 'bin/flutter').write_text('#!/bin/bash\nprintf "original-flutter\\n"\n')
+        (sdk / 'bin/flutter').chmod(0o700)
         self.environment = {'PATH': os.environ['PATH'], 'HOME': str(self.operator),
                             'XDG_CONFIG_HOME': str(self.operator / '.config'),
                             'PUB_CACHE': str(self.root / 'shared package cache'),
@@ -85,6 +87,25 @@ class FlutterProfileTests(unittest.TestCase):
         self.assertIn('private-fixture.invalid', self.list_tokens(str(wrapper), {'PATH': os.environ['PATH']}))
         self.assertEqual(environment['PUB_CACHE'], self.environment['PUB_CACHE'])
         self.assertEqual(self.original_store.read_bytes(), self.original_bytes)
+
+    def test_disposable_ios_sdk_override_is_honored_with_a_path_only_fallback(self):
+        wrapper, environment = self.prepare()
+        patched = self.root / 'patched SDK with spaces'
+        (patched / 'bin').mkdir(parents=True)
+        for tool in ['flutter', 'dart']:
+            executable = patched / 'bin' / tool
+            executable.write_text('#!/bin/bash\nprintf "patched-' + tool + '\\n"\n')
+            executable.chmod(0o700)
+            result = subprocess.run([str(wrapper.with_name(tool)), '--version'],
+                                    env={**environment, 'FLUTTER_ROOT': str(patched)},
+                                    capture_output=True, text=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout.strip(), 'patched-' + tool)
+        fallback = subprocess.run([str(wrapper.with_name('flutter')), '--version'],
+                                  env={'PATH': os.environ['PATH']},
+                                  capture_output=True, text=True, timeout=10)
+        self.assertEqual(fallback.returncode, 0, fallback.stderr)
+        self.assertEqual(fallback.stdout.strip(), 'original-flutter')
 
     @unittest.skipUnless(platform.system() == 'Linux', 'The publisher uses Linux XDG configuration')
     def test_direct_sdk_invocation_uses_the_same_private_token_store(self):

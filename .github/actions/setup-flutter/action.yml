@@ -31,8 +31,11 @@ runs:
         for tool in flutter dart; do
           {
             printf '#!/bin/bash\nset -euo pipefail\n'
-            printf 'exec env HOME=%q XDG_CONFIG_HOME=%q %q "$@"\n' \
-              "$state/home" "$state/home/.config" "$FLUTTER_ROOT/bin/$tool"
+            printf 'sdk_root=%q\n' "$FLUTTER_ROOT"
+            # iOS validation selects a disposable SDK containing its backport.
+            printf 'sdk_root="${FLUTTER_ROOT:-$sdk_root}"\n'
+            printf 'exec env HOME=%q XDG_CONFIG_HOME=%q "$sdk_root/bin/%s" "$@"\n' \
+              "$state/home" "$state/home/.config" "$tool"
           } > "$state/bin/$tool"
           chmod 700 "$state/bin/$tool"
         done
