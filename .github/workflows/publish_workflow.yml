@@ -34,7 +34,7 @@ jobs:
       issue: ${{ steps.candidate.outputs.issue }}
       operation-id: ${{ steps.candidate.outputs.operation-id }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: $/.github/actions/checkout-release-source
         with:
           fetch-depth: 0
 
@@ -101,7 +101,7 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: $/.github/actions/checkout-release-source
         with:
           ref: ${{ needs.validate_tag.outputs.commit }}
           fetch-depth: 0

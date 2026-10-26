@@ -65,8 +65,15 @@ create independent integration PRs or delete managed branches yourself.
 
 ## Recovery
 
-- Preparation failure before promotion: fix the linked branch and rerun.
-  Native commit steps accept unchanged rebuilt outputs.
+- Preparation failure before promotion: fix the linked branch and start a new
+  preparation through Copilot's authorized launcher when workflow code changed.
+  GitHub reruns retain the original workflow revision; they suit transient
+  failures with unchanged code. Native commit steps accept unchanged outputs.
+- Checkout reports `pack has unresolved deltas`: deployment checkouts retire
+  inherited shallow Git metadata in the verified runner workspace before a fresh
+  full-history fetch. Inspect a refusal rather than deleting worktrees, stashes,
+  authored changes or another checkout. See
+  [complete-history checkout](../development/self-hosted-ci.md#complete-history-for-deployment-checkouts).
 - Remote tip moved: preparation stops rather than silently testing a newer
   commit. Inspect the concurrent change and start a consistent candidate attempt.
 - Production content differs: reconcile the production change before preparing

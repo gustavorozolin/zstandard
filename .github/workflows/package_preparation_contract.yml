@@ -8,6 +8,7 @@ on:
       - '.github/scripts/update_versions.dart'
       - '.github/scripts/tests/test_package_preparation.py'
       - '.github/scripts/tests/test_package_publication.py'
+      - '.github/scripts/tests/test_release_checkout.py'
       - '.github/scripts/tests/test_hotfix_ref.py'
       - 'scripts/check_pub_metadata.dart'
       - 'scripts/check_release_tag.sh'
@@ -47,6 +48,8 @@ jobs:
           "$RUNNER_TEMP/preparation-contract/bin/python" -m pip install PyYAML==6.0.3
       - name: Require version tags for workflow and composite Actions
         run: '"$RUNNER_TEMP/preparation-contract/bin/python" .github/scripts/check_action_versions.py'
+      - name: Verify safe replacement of inherited shallow checkout metadata
+        run: '"$RUNNER_TEMP/preparation-contract/bin/python" -m unittest discover -s .github/scripts/tests -p test_release_checkout.py -v'
       - name: Verify real metadata preparation and failure behavior
         run: '"$RUNNER_TEMP/preparation-contract/bin/python" -m unittest discover -s .github/scripts/tests -p test_package_preparation.py -v'
       - name: Verify publication ordering, credential renewal and failure recovery without uploads
