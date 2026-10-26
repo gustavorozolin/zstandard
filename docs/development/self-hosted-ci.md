@@ -1,5 +1,9 @@
 # Self-hosted CI contract
 
+Copilot command verification prepares its project SDK in its own Action job;
+platform job setup does not carry over. See
+[project dependency setup and activation](project-verification.md).
+
 The repository uses self-hosted runners for platform checks that cannot run reliably on a generic hosted image. The automated scope covers Android, Linux, Web, Apple Silicon macOS/iOS, and Windows X64. Apple and Windows require their corresponding hardware and toolchain.
 
 ## Linux runner labels
