@@ -76,6 +76,12 @@ create independent integration PRs or delete managed branches yourself.
   [complete-history checkout](../development/self-hosted-ci.md#complete-history-for-deployment-checkouts).
 - Remote tip moved: preparation stops rather than silently testing a newer
   commit. Inspect the concurrent change and start a consistent candidate attempt.
+- Promotion-PR CI requires a source correction before acceptance: Copilot has
+  already frozen the candidate SHA. Disable that PR's auto-merge and use an
+  explicitly approved recovery for the unpublished candidate; the current
+  limitation is tracked in [Copilot #732](https://github.com/vypdev/copilot/issues/732).
+  A replacement needs a complete new preparation and its own evidence. Never
+  reuse the old attestation or rewrite its stored `sourceSha` in place.
 - Production content differs: reconcile the production change before preparing
   a new candidate; do not bypass evidence validation.
 - Publication interrupted or indexing delayed: inspect the issue failure and

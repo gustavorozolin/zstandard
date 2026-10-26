@@ -136,3 +136,11 @@ checkouts alone and refuses linked worktrees, locks, stashes, unexpected files
 or local branches absent from cached remote refs. It does not modify the runner's
 global Git configuration or any remote branch or tag. The runner's normal job
 temporary-directory cleanup retires the cached metadata.
+
+Apple validation jobs save the tracked Xcode project and scheme files before
+Flutter runs and restore their exact starting contents in an `always()` step
+after integration tests. Flutter's SwiftPM migrations are test-host changes;
+leaving them in a shared checkout can block the next release's clean-source
+check. If an older job left those migrations behind, run the corrected Apple
+PR checks before preparing again. Their ordinary checkout and final restoration
+clean the CI host without weakening the deployment checkout's source guards.
