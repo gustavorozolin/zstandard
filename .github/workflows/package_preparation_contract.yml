@@ -29,6 +29,9 @@ jobs:
       group: vypdev
       labels: [self-hosted, codex, Linux]
     timeout-minutes: 10
+    env:
+      # Keep imported test modules out of subsequent clean-workspace checkouts.
+      PYTHONDONTWRITEBYTECODE: '1'
     steps:
       - uses: actions/checkout@v6
         with:
