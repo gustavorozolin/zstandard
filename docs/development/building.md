@@ -5,6 +5,13 @@ For the current Apple dependency policy, see
 
 This document describes how to build the Zstandard plugin, its native libraries, and the CLI package.
 
+The commands below are for local development and disposable validation builds.
+Publishable versions, WebAssembly and precompiled CLI libraries are produced by
+Copilot's deployment `prepare` phase on its managed release branch. The complete
+candidate is retained and tested before publication starts; do not manually
+assemble or upload release binaries. See the
+[release process and artifact map](release-process.md#artifact-storage-and-handoff).
+
 ## All-in-one (macOS)
 
 From the repository root, you can run sync, bindings, all macOS-runnable builds, and all tests in sequence:
@@ -29,7 +36,7 @@ flutter run
 
 Select the target platform (Android, iOS, macOS, Windows, Linux, web). This will compile the plugin and, for native platforms, the platform-specific native code as part of the Flutter build.
 
-### Build release artifacts
+### Build local example applications
 
 ```bash
 cd zstandard/example
@@ -65,7 +72,15 @@ If you are developing or modifying a platform package’s native code:
 - The checked-in Apple examples target iOS 15.0 and macOS 12.0, matching the minimum deployment targets enforced by the Flutter 3.47.2 SDK used in CI.
 - In SwiftPM mode the native target is statically linked into the app and Dart FFI resolves its symbols from the process. In CocoaPods mode the plugin framework is embedded and loaded by path.
 
-The Apple workflows run the example applications through a matrix covering both dependency managers (`swiftpm` and `cocoapods`) and both native-source layouts (the repository workspace and an exact external path selected through Dart package configuration). Jobs that switch Flutter's global dependency-manager preference share a non-cancelling cross-workflow lock, so iOS and macOS cannot race on the persistent SDK. Each native job builds the example, launches it through Flutter's integration-test runner, and executes the integration tests on the iOS simulator or macOS desktop. The preference is restored to CocoaPods mode during cleanup. The runner uses its preinstalled Apple Silicon Flutter SDK; no SDK download action is used.
+The Apple workflows run the example applications through a matrix covering both
+dependency managers (`swiftpm` and `cocoapods`) and both native-source layouts
+(the repository workspace and an exact external path selected through Dart
+package configuration). The setup action installs or reuses Flutter 3.47.2 in
+the runner's versioned cache and isolates settings in a private job profile.
+iOS integration jobs use a disposable SDK copy with the simulator log-readiness
+backport. Each job builds and launches its example on an owned iOS simulator or
+the macOS desktop; cleanup restores the job's preference and removes only its
+owned temporary resources. See the [runner contract](self-hosted-ci.md).
 
 ### Linux
 
@@ -117,7 +132,7 @@ The compiled executable will still need the native library (e.g. .dylib, .dll, .
 1. **Update the canonical zstd source**  
    From repo root:
    ```bash
-   ./scripts/update_zstd.sh        # latest from dev (upstream default)
+   ./scripts/update_zstd.sh        # reviewed pinned upstream commit
    ./scripts/update_zstd.sh v1.5.6 # specific tag or branch
    ```
    This fetches from the [official repo](https://github.com/facebook/zstd) and updates `zstandard_native/src/zstd/`.

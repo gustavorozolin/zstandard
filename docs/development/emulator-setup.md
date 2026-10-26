@@ -6,7 +6,10 @@ This document describes how to set up Android emulators, iOS simulators, Linux d
 
 ### CI (GitHub Actions)
 
-The push and release workflows use `scripts/run_android_emulator_ci.sh` on the `[self-hosted, Linux]` runner to install the required SDK components, create an API 30 `aosp_atd` `pixel_2` AVD, and run the Android integration tests. The Android Test Device image avoids Google Play services that are not needed by this package's tests and is suitable for headless execution. The generated AVD disables GPS because the tests do not use location, and the launcher disables the emulator's `GnssGrpcV1` feature so it does not start an unnecessary host GNSS socket. Vulkan is disabled explicitly because this software-only runner has experienced emulator crashes while initializing the Vulkan/SwiftShader backend; `swiftshader_indirect` remains enabled for GLES rendering. The workflow builds the APK first and explicitly uses software emulation because the current self-hosted runner does not expose `/dev/kvm`. The launcher intentionally starts the emulator directly instead of using a generic action whose unconditional input-unlock step is unreliable while this slow software image is still bringing up Android services. Before Flutter starts, `scripts/wait_for_android_ci_services.sh` requires the package, input, and settings services plus the package manager to pass a single combined `adb` probe repeatedly for 90 seconds; this avoids relying on the image's early `boot_completed` signal without multiplying slow ADB round trips. Every ADB operation has its own timeout so a stalled ADB daemon cannot consume the whole job silently; `ANDROID_ADB_TIMEOUT_SECONDS` can override the 30-second default. If boot or readiness times out, the launcher prints the emulator log and the readiness script prints Android logcat output.
+Same-repository PR, `develop` push and release-candidate workflows use
+`scripts/run_android_emulator_ci.sh` in group `vypdev` with runner labels
+`[self-hosted, codex, Linux]` to install the required SDK components, create an
+API 30 `aosp_atd` `pixel_2` AVD, and run the Android integration tests. The Android Test Device image avoids Google Play services that are not needed by this package's tests and is suitable for headless execution. The generated AVD disables GPS because the tests do not use location, and the launcher disables the emulator's `GnssGrpcV1` feature so it does not start an unnecessary host GNSS socket. Vulkan is disabled explicitly because this software-only runner has experienced emulator crashes while initializing the Vulkan/SwiftShader backend; `swiftshader_indirect` remains enabled for GLES rendering. The workflow builds the APK first and explicitly uses software emulation because the current self-hosted runner does not expose `/dev/kvm`. The launcher intentionally starts the emulator directly instead of using a generic action whose unconditional input-unlock step is unreliable while this slow software image is still bringing up Android services. Before Flutter starts, `scripts/wait_for_android_ci_services.sh` requires the package, input, and settings services plus the package manager to pass a single combined `adb` probe repeatedly for 90 seconds; this avoids relying on the image's early `boot_completed` signal without multiplying slow ADB round trips. Every ADB operation has its own timeout so a stalled ADB daemon cannot consume the whole job silently; `ANDROID_ADB_TIMEOUT_SECONDS` can override the 30-second default. If boot or readiness times out, the launcher prints the emulator log and the readiness script prints Android logcat output.
 
 ### Local: Prerequisites
 
@@ -97,7 +100,10 @@ flutter build linux --debug
 xvfb-run --auto-servernum flutter test integration_test/ -d linux
 ```
 
-The Linux runner must be Debian/Ubuntu-based and allow passwordless `sudo` for the dependency setup action.
+The Linux runner must be Debian/Ubuntu-based with APT/dpkg tools and network
+access. The dependency action reuses installed packages and extracts missing
+dependencies into a private job prefix. It requires no passwordless `sudo` and
+does not change or repair the host package database.
 
 ## Web (Chrome + ChromeDriver)
 

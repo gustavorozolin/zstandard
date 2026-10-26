@@ -9,6 +9,7 @@ import 'package:zstandard_android/zstandard_android.dart';
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
+  // Software emulation needs more than the default 30 seconds for this batch.
   test('roundtrip 100 deterministic non-empty byte arrays', () async {
     final z = ZstandardAndroid();
 
@@ -30,5 +31,5 @@ void main() {
       expect(decompressed, isNotNull);
       expect(List<int>.from(decompressed!), equals(List<int>.from(input)));
     }
-  });
+  }, timeout: const Timeout(Duration(minutes: 2)));
 }

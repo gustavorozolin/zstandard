@@ -2,13 +2,18 @@ name: Package preparation contract
 on:
   pull_request:
     paths:
-      - '.github/actions/prepare-package-release/**'
+      - '.github/actions/**'
+      - '.github/workflows/**'
+      - '.github/scripts/check_action_versions.py'
       - '.github/scripts/update_versions.dart'
       - '.github/scripts/tests/test_package_preparation.py'
       - '.github/scripts/tests/test_hotfix_ref.py'
       - 'scripts/check_pub_metadata.dart'
       - 'scripts/check_release_tag.sh'
       - '.github/scripts/tests/test_release_tag.py'
+      - '.github/scripts/tests/test_release_candidate.py'
+      - '.github/scripts/tests/test_release_builds.py'
+      - 'scripts/release_candidate.py'
       - '.github/workflows/publish_workflow.yml'
       - '.github/workflows/package_preparation_contract.yml'
       - '.github/workflows/release_workflow.yml'
@@ -39,9 +44,15 @@ jobs:
         run: |
           python -m venv "$RUNNER_TEMP/preparation-contract"
           "$RUNNER_TEMP/preparation-contract/bin/python" -m pip install PyYAML==6.0.3
+      - name: Require version tags for workflow and composite Actions
+        run: '"$RUNNER_TEMP/preparation-contract/bin/python" .github/scripts/check_action_versions.py'
       - name: Verify real metadata preparation and failure behavior
         run: '"$RUNNER_TEMP/preparation-contract/bin/python" -m unittest discover -s .github/scripts/tests -p test_package_preparation.py -v'
       - name: Reject preparation outside the matching hotfix branch
         run: '"$RUNNER_TEMP/preparation-contract/bin/python" -m unittest discover -s .github/scripts/tests -p test_hotfix_ref.py -v'
       - name: Verify release and hotfix tag provenance without publication
         run: '"$RUNNER_TEMP/preparation-contract/bin/python" -m unittest discover -s .github/scripts/tests -p test_release_tag.py -v'
+      - name: Verify exact candidate evidence and Copilot ownership
+        run: '"$RUNNER_TEMP/preparation-contract/bin/python" -m unittest discover -s .github/scripts/tests -p test_release_candidate.py -v'
+      - name: Verify native commit retries and actual CMake toolchain resolution
+        run: '"$RUNNER_TEMP/preparation-contract/bin/python" -m unittest discover -s .github/scripts/tests -p test_release_builds.py -v'
