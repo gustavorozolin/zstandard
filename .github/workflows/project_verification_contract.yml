@@ -1,0 +1,59 @@
+name: Project verification setup contract
+
+on:
+  pull_request:
+    paths:
+      - '.github/actions/copilot-verification-setup/**'
+      - '.github/actions/setup-linux-dependencies/**'
+      - '.github/workflows/project_verification_contract.yml'
+      - 'scripts/test_all.sh'
+      - 'scripts/create_local_overrides.dart'
+
+permissions:
+  contents: read
+
+jobs:
+  project-verification:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on:
+      group: vypdev
+      labels: [self-hosted, codex, Linux]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-linux-dependencies
+      - name: Create a private dependency profile
+        id: profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          profile="$(mktemp -d "$RUNNER_TEMP/zstandard-verification-contract.XXXXXX")"
+          mkdir "$profile/home"
+          printf '%s\n' 'zstandard-verification-contract' > "$profile/.owner"
+          printf 'directory=%s\n' "$profile" >> "$GITHUB_OUTPUT"
+          printf 'HOME=%s\n' "$profile/home" >> "$GITHUB_ENV"
+      - uses: ./.github/actions/copilot-verification-setup
+      - name: Run the configured project verification without source changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/test_all.sh
+          git diff --check
+          git diff --exit-code
+          test -z "$(git ls-files --others --exclude-standard)"
+      - name: Retire the owned dependency profile
+        if: always() && steps.profile.outputs.directory != ''
+        shell: bash
+        env:
+          ZSTANDARD_PROFILE: ${{ steps.profile.outputs.directory }}
+        run: |
+          set -euo pipefail
+          case "$ZSTANDARD_PROFILE" in
+            "$RUNNER_TEMP"/zstandard-verification-contract.*) ;;
+            *) echo 'Unexpected private profile path.' >&2; exit 1 ;;
+          esac
+          test ! -L "$ZSTANDARD_PROFILE"
+          test "$(cat "$ZSTANDARD_PROFILE/.owner")" = zstandard-verification-contract
+          rm -r -- "$ZSTANDARD_PROFILE"
