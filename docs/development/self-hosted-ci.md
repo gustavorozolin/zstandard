@@ -88,6 +88,10 @@ marked directory. The shared SDK stays unchanged; see the
 
 Windows jobs target `[self-hosted, Windows, X64]`. The workflow installs and caches the pinned Flutter SDK on each runner, enables Windows desktop support, verifies Git and CMake, and checks that the runner can create symbolic links. The runner must provide a Visual Studio C++ desktop toolchain and Windows Developer Mode (or equivalent `SeCreateSymbolicLinkPrivilege` for the runner service account). Integration tests launch a real Windows Flutter application, so the runner must have an interactive desktop session; a headless service session is not sufficient for this job.
 
+Windows CI and release jobs use the built-in Windows PowerShell (`powershell`), including runners without PowerShell 7 (`pwsh`). Release preparation selects a Visual Studio instance with both x64 and ARM64 tools, passes that exact instance to CMake and writes GitHub output files explicitly as UTF-8; Windows PowerShell 5.1 otherwise redirects output as UTF-16. The CLI library producer uses GitHub's standard `windows-2025` image, which includes both toolsets; Windows application integration stays on the self-hosted desktop runners described here.
+
+Windows setup resolves CMake and CTest from the job's current `PATH`, a standalone CMake installation, or Visual Studio's bundled CMake tools, then adds their directory to the job's `PATH`. A machine-wide `PATH` change is not required; both executables must be installed and runnable.
+
 The workflow builds `zstandard_windows/example` in Debug mode, runs the generated native test target (including a zstd compression/decompression round trip), runs the Windows package tests with the built DLL on `PATH`, and launches the example for Flutter integration tests. The same sequence is repeated with the current `zstandard_native` package staged outside the checkout and selected through `package_config.json`. A separate federated-example job builds `zstandard/example` and runs its integration suite.
 
 ## Web job requirements

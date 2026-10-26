@@ -55,8 +55,19 @@ preparation; do not bump or generate them locally before starting that phase.
    release branch and passes its exact commit to the next job. Unchanged
    outputs can be retried; a moved remote rejects a push. No package is
    published while this build chain is running.
+   The Windows CLI producer uses GitHub's standard `windows-2025` image with
+   both MSVC toolsets; it does not need Flutter to compile the C libraries.
+   Windows application validation runs on the trusted self-hosted desktops.
 5. All candidate tests check out the final native-build commit. Static,
    formatting, package, platform release-build and integration gates must pass.
+   Resolve all ten packages against the local candidate before formatting,
+   so each formatter uses its declared Dart language version. Linux package
+   tests load the plugin from the freshly built release bundle, and native
+   CTest runs before integration retires Flutter's temporary test entry point.
+   Native test discovery is enabled at the example's CMake root; an empty
+   CTest suite fails both release and normal Linux CI.
+   Web integration starts its driver inside Xvfb without relying on exported
+   Bash functions.
    The final gate rejects a moved release tip and uploads
    `release-candidate-X.Y.Z`, recording commit/tree, issue and run/attempt.
 6. Only then does `prepare_deployment_action` open Copilot's normal production
