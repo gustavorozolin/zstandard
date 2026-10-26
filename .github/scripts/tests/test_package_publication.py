@@ -69,9 +69,13 @@ sys.exit(code)
             executable = tools / name
             executable.write_text(source)
             executable.chmod(0o700)
-        self.env = {'PATH': str(tools) + os.pathsep + os.environ['PATH'],
-                    'HOME': self.folder.name, 'BASH_ENV': os.devnull,
-                    'REGISTRY_STATE': str(self.state)}
+        # setup-python's Linux interpreter needs its shared-library search path
+        # even when fixture commands run with an otherwise isolated environment.
+        self.env = {key: value for key, value in os.environ.items()
+                    if key in ['PATH', 'LD_LIBRARY_PATH', 'SYSTEMROOT']}
+        self.env.update(PATH=str(tools) + os.pathsep + self.env['PATH'],
+                        HOME=self.folder.name, BASH_ENV=os.devnull,
+                        REGISTRY_STATE=str(self.state))
         self.action = yaml.safe_load((ROOT / COMPOSITE).read_text())
         workflow = yaml.safe_load((ROOT / WORKFLOW).read_text())
         self.calls = [step for step in workflow['jobs']['publish']['steps']
