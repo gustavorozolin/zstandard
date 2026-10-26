@@ -13,6 +13,19 @@ runs:
         cache-path: '${{ runner.tool_cache }}/zstandard-flutter-v2/:channel:-:version:-:arch:'
         cache: false
         pub-cache: false
+    - name: Prepare private Linux test dependencies
+      if: runner.os == 'Linux'
+      shell: bash
+      env:
+        DESKTOP: 'true'
+        COVERAGE: 'false'
+        ANDROID: 'false'
+        ARM64: 'false'
+        BROWSER: 'false'
+      run: ZSTANDARD_LINUX_STATE_ROOT="$HOME" bash "$GITHUB_ACTION_PATH/linux-dependencies.sh"
+    - name: Preserve native tool settings through the supported PATH handoff
+      shell: bash
+      run: bash "$GITHUB_ACTION_PATH/runtime-launchers.sh"
     - name: Verify the provisioned SDK
       shell: bash
       run: |

@@ -9,7 +9,10 @@ The repository uses Copilot's supported project dependency hook at
 `.github/actions/copilot-verification-setup/action.yml`. This composite belongs
 to this project. It provisions Flutter 3.47.2 and its bundled Dart SDK inside
 the verification job, reusing the same versioned runner tool cache as normal
-CI. It does not require a global Flutter installation in the runner service.
+CI. Linux compiler/GTK dependencies use the existing rootless private package
+bootstrap, shared with platform CI. Reviewed launchers carry native include and
+library settings through Copilot's supported PATH handoff. The preparation
+does not require global Flutter or package installation in the runner service.
 All remote Action references use version tags.
 
 The installed comment workflows already call Copilot's reusable coordinator.
@@ -25,6 +28,10 @@ lifecycle remain unchanged.
    the project hook in the same Linux job as `bash scripts/test_all.sh`, with
    a private dependency profile. The check requires the tests to pass without
    tracked changes or new publishable files. Platform CI remains required.
+   The test runner resolves local candidate packages, builds the actual Linux
+   example plugin before its FFI unit tests and restores existing local
+   dependency overrides after success or failure. These builds are validation
+   hosts; distributable generation remains in release preparation.
 3. Review and merge the dependency configuration onto trusted `master` before
    enabling `VERIFICATION_SETUP=true`. Copilot reads the trusted main snapshot;
    a change only on a candidate branch cannot replace that setup.
