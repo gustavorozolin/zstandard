@@ -20,6 +20,12 @@ They do not need modification to use this hook. The Copilot engine, approval
 policy, configured verification commands, managed branches and deployment
 lifecycle remain unchanged.
 
+Ordinary application jobs also isolate Dart's configuration, including commands
+that invoke a freshly installed Dart SDK directly. The package archive cache
+can be reused, while pub.dev token references stay in the job's private profile.
+A publication job must not leave later public dependency reads dependent on its
+short-lived `PUB_TOKEN` environment variable.
+
 ## Review and activation
 
 1. Keep `VERIFICATION_SETUP=false` while preparing and reviewing the hook.

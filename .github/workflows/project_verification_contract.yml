@@ -5,6 +5,8 @@ on:
     paths:
       - '.github/actions/copilot-verification-setup/**'
       - '.github/actions/setup-linux-dependencies/**'
+      - '.github/actions/setup-flutter/**'
+      - '.github/scripts/tests/test_flutter_profile.py'
       - '.github/workflows/project_verification_contract.yml'
       - 'scripts/test_all.sh'
       - 'scripts/run_unit_tests.py'
@@ -39,6 +41,8 @@ jobs:
       - uses: ./.github/actions/copilot-verification-setup
       - name: Verify isolated native launchers
         run: python3 -B -m unittest discover -s .github/scripts/tests -p test_verification_runtime.py -v
+      - name: Verify Dart configuration stays private when the SDK is invoked directly
+        run: python3 -B -m unittest discover -s .github/scripts/tests -p test_flutter_profile.py -v
       - name: Verify local dependency preparation, failure handling and source restoration
         run: python3 -B -m unittest discover -s scripts/tests -p test_unit_test_runner.py -v
       - name: Run the configured project verification without source changes

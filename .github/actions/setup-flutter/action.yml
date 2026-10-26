@@ -21,23 +21,28 @@ runs:
         cache: false
         pub-cache: false
 
-    - name: Isolate Flutter settings for concurrent Unix jobs
+    - name: Isolate Flutter and Dart settings for concurrent Unix jobs
       if: runner.os != 'Windows'
       shell: bash
       run: |
         set -euo pipefail
         state="$(mktemp -d "$RUNNER_TEMP/zstandard-flutter-profile.XXXXXX")"
         mkdir -p "$state/home" "$state/bin"
-        cat > "$state/bin/flutter" <<'WRAPPER'
+        for tool in flutter dart; do
+        cat > "$state/bin/$tool" <<'WRAPPER'
         #!/bin/bash
         set -euo pipefail
         exec env HOME="$ZSTANDARD_FLUTTER_SETTINGS_HOME" \
           XDG_CONFIG_HOME="$ZSTANDARD_FLUTTER_SETTINGS_HOME/.config" \
-          "$FLUTTER_ROOT/bin/flutter" "$@"
+          "$FLUTTER_ROOT/bin/${0##*/}" "$@"
         WRAPPER
-        chmod 700 "$state/bin/flutter"
+        chmod 700 "$state/bin/$tool"
+        done
         {
           printf 'ZSTANDARD_FLUTTER_SETTINGS_HOME=%s\n' "$state/home"
+          # setup-dart invokes its SDK directly when provisioning OIDC. Isolate
+          # its token-reference store too, while retaining the package cache.
+          printf 'XDG_CONFIG_HOME=%s\n' "$state/home/.config"
           printf 'PUB_CACHE=%s\n' "${PUB_CACHE:-$HOME/.pub-cache}"
         } >> "$GITHUB_ENV"
         printf '%s\n' "$state/bin" >> "$GITHUB_PATH"
