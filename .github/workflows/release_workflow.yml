@@ -108,7 +108,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: $/.github/actions/checkout-release-source
         with:
           ref: ${{ github.ref }}
           fetch-depth: 0
@@ -197,7 +197,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: $/.github/actions/checkout-release-source
         with:
           ref: ${{ needs.update_files.outputs.commit }}
           fetch-depth: 0
@@ -252,7 +252,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: $/.github/actions/checkout-release-source
         with:
           ref: ${{ needs.cli_build_macos_precompiled_libs.outputs.commit }}
           fetch-depth: 0
@@ -314,7 +314,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: $/.github/actions/checkout-release-source
         with:
           ref: ${{ needs.cli_build_linux_precompiled_libs.outputs.commit }}
           fetch-depth: 0
@@ -383,7 +383,7 @@ jobs:
     timeout-minutes: 45
     needs: [update_files, cli_build_windows_precompiled_libs]
     steps:
-      - uses: actions/checkout@v6
+      - uses: $/.github/actions/checkout-release-source
         with:
           ref: ${{ needs.cli_build_windows_precompiled_libs.outputs.commit }}
           fetch-depth: 0
@@ -423,7 +423,7 @@ jobs:
     timeout-minutes: 120
     needs: [update_files, cli_build_windows_precompiled_libs]
     steps:
-      - uses: actions/checkout@v6
+      - uses: $/.github/actions/checkout-release-source
         with:
           ref: ${{ needs.cli_build_windows_precompiled_libs.outputs.commit }}
           fetch-depth: 0
@@ -485,7 +485,7 @@ jobs:
     timeout-minutes: 60
     needs: [update_files, cli_build_windows_precompiled_libs]
     steps:
-      - uses: actions/checkout@v6
+      - uses: $/.github/actions/checkout-release-source
         with:
           ref: ${{ needs.cli_build_windows_precompiled_libs.outputs.commit }}
           fetch-depth: 0
@@ -526,7 +526,7 @@ jobs:
     timeout-minutes: 90
     needs: [update_files, cli_build_windows_precompiled_libs]
     steps:
-      - uses: actions/checkout@v6
+      - uses: $/.github/actions/checkout-release-source
         with:
           ref: ${{ needs.cli_build_windows_precompiled_libs.outputs.commit }}
           fetch-depth: 0
@@ -564,7 +564,7 @@ jobs:
     timeout-minutes: 75
     needs: [update_files, cli_build_windows_precompiled_libs]
     steps:
-      - uses: actions/checkout@v6
+      - uses: $/.github/actions/checkout-release-source
         with:
           ref: ${{ needs.cli_build_windows_precompiled_libs.outputs.commit }}
           fetch-depth: 0
@@ -640,7 +640,7 @@ jobs:
         platform: [ios, macos]
         dependency_manager: [swiftpm, cocoapods]
     steps:
-      - uses: actions/checkout@v6
+      - uses: $/.github/actions/checkout-release-source
         with:
           ref: ${{ needs.cli_build_windows_precompiled_libs.outputs.commit }}
           fetch-depth: 0
@@ -752,7 +752,7 @@ jobs:
       - candidate_windows
       - candidate_apple
     steps:
-      - uses: actions/checkout@v6
+      - uses: $/.github/actions/checkout-release-source
         with:
           ref: ${{ needs.cli_build_windows_precompiled_libs.outputs.commit }}
           fetch-depth: 0

@@ -31,7 +31,7 @@ pub.dev publication steps. Do not create a competing branch or merge flow.
 
 For a patch release, use the installed Release form with **Release Type:
 Patch** and **Release Version: Automatic**. Copilot resolves the next patch
-from the latest stable tag; for example, `v1.5.0` advances to `1.5.1`. Record
+from the latest stable tag; for example, `v1.5.1` advances to `1.5.2`. Record
 the resolved version in the issue's control center before starting deployment.
 
 The release notes must announce the current minimums: Dart `^3.12.0` and
@@ -135,7 +135,13 @@ zstandard_platform_interface → zstandard_native
 ```
 
 Each unpublished package must pass `dart pub publish --dry-run`, and the
-workflow waits for indexing between packages. Only after all ten versions are
+workflow waits for indexing between packages. Each package receives a fresh
+OIDC credential after the preceding indexing wait; a token issued once for the
+whole sequence can expire before later uploads. Dependency resolution uses
+`pub get --no-example`, so publication checks the distributable package without
+resolving example applications that intentionally use local path dependencies.
+The Dart SDK matches the version bundled with the tested Flutter SDK.
+Only after all ten versions are
 independently verified does Copilot create/verify the GitHub Release, receive
 the checksum attachment and run `published_deployment_action`. Copilot then
 performs its configured protected reconciliation. The old independent
@@ -154,6 +160,18 @@ Publication recovery retries a failed workflow for the existing tag without
 moving it. The tag workflow can also be rerun directly after inspecting the
 failure. Published versions are skipped; reconciliation starts only after all
 ten packages are verified.
+
+Rerunning a tag workflow uses that tag's original workflow code. An environment
+or transient registry failure can be corrected and retried, but a defect in the
+frozen publisher requires a corrected new release/version. Keep existing tags
+and already published versions unchanged, record the old release as partial,
+and obtain authorization for the next patch. Before preparing its candidate,
+retain accepted production fixes through Copilot's supported synchronization
+command in the new release issue, for example
+`/copilot sync-branch --from master --no-agent`. The command must pass the
+configured verification, with Flutter available in its own job; a separate
+platform CI run does not provision that job. Do not synchronize managed remote
+branches manually or mark a partial operation as published.
 
 Evidence is retained for 90 days. Missing, expired or mismatched evidence
 blocks publication and cannot be replaced by an operator assertion. Prepare a

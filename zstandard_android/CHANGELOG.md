@@ -1,3 +1,13 @@
+## 1.5.2 - Release recover package publication safely
+
+- Fix package publication so Flutter resolves only the distributable package, without resolving example apps that mix local and hosted dependencies.
+- Renew pub.dev OIDC credentials for each package after the previous package has finished indexing.
+- Retain all release-preparation fixes and generated artifacts accepted in production by PR #169; regenerate every distributable artifact in the new deployment preparation phase.
+- Document recovery from a partial immutable publication.
+- Minimum supported SDKs remain Dart ^3.12.0 and Flutter >=3.44.0; release validation uses Flutter 3.47.2.
+
+- Make release verification reproducible with job-local Flutter/Dart and native test dependencies, and isolate publication token references from ordinary CI.
+
 ## 1.5.1 - Prepare patch release with complete deployment built artifacts
 
 - Fix iOS simulator startup by waiting for its log stream before launching the test application; preserve both SwiftPM and CocoaPods support and workspace/pub-cache native-source resolution.
