@@ -17,6 +17,9 @@ runs:
     - uses: dart-lang/setup-dart@v1
       with:
         sdk: ${{ inputs.dart-version }}
+        # A nested SDK action inherits this composite's path, which has no
+        # analyzer matcher. Publication keeps its dry runs and CI gates.
+        problem-matcher: false
     - name: Resolve, publish and wait for the exact version
       shell: bash
       env:

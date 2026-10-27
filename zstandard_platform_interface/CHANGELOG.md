@@ -1,3 +1,11 @@
+## 1.5.3 - Repair nested SDK setup before pub.dev publication
+
+- Fix nested publication SDK setup by disabling its optional analyzer problem matcher. Preserve fresh OIDC credentials for every package and all publication dry runs.
+- Add regression coverage for an inherited composite action path with no matcher asset, including failure before any package upload.
+- Retain the accepted publisher, checkout, Apple host cleanup and Android emulator-session fixes from production 1.5.2; regenerate all distributable outputs during deployment preparation.
+- Document recovery from a tagged workflow that failed before its first package upload.
+- Minimum SDKs remain Dart ^3.12.0 and Flutter >=3.44.0; validation uses Flutter 3.47.2.
+
 ## 1.5.2 - Release recover package publication safely
 
 - Fix package publication so Flutter resolves only the distributable package, without resolving example apps that mix local and hosted dependencies.

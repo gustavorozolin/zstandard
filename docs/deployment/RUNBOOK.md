@@ -94,6 +94,11 @@ create independent integration PRs or delete managed branches yourself.
   package versions unchanged. Record the old operation's partial publication;
   do not report it as complete. Preserve production fixes in the new candidate
   through Copilot's supported branch synchronization before preparation.
+- SDK setup reports a missing `dart-analyzer.json`: the package publisher runs
+  the SDK action inside a composite, whose inherited action path contains no
+  analyzer matcher. Publication SDK setup disables only that optional matcher
+  with `problem-matcher: false`; dry runs and required CI stay enabled. For an
+  already tagged workflow, prepare a new patch with this correction.
 - Copilot synchronization verification reports `flutter: command not found`:
   provision Flutter for the command's own job, then retry the same supported
   command. Do not remove configured tests or manually merge the managed branch.
