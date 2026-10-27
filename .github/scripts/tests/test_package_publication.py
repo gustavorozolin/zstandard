@@ -42,6 +42,13 @@ code = 0
 if tool == 'setup-sdk':
     state['issued'] = state['clock']
     state['events'].append(['credential', state['clock']])
+    # setup-dart inherits the composite's action path. Its optional matcher
+    # command fails in the runner when that parent has no analyzer asset.
+    if os.environ.get('INPUT_PROBLEM-MATCHER', 'true') != 'false':
+        matcher = Path(os.environ['GITHUB_ACTION_PATH']) / 'dart-analyzer.json'
+        state['events'].append(['matcher', str(matcher)])
+        if not matcher.is_file():
+            code = 66
 elif args[:2] == ['pub', 'get']:
     state['events'].append(['resolve', package, tool])
     if os.environ.get('FAIL_RESOLVE') == package:
@@ -76,6 +83,9 @@ sys.exit(code)
         self.env.update(PATH=str(tools) + os.pathsep + self.env['PATH'],
                         HOME=self.folder.name, BASH_ENV=os.devnull,
                         REGISTRY_STATE=str(self.state))
+        self.action_path = self.root / 'composite action with spaces'
+        self.action_path.mkdir()
+        self.env['GITHUB_ACTION_PATH'] = str(self.action_path)
         self.action = yaml.safe_load((ROOT / COMPOSITE).read_text())
         workflow = yaml.safe_load((ROOT / WORKFLOW).read_text())
         self.calls = [step for step in workflow['jobs']['publish']['steps']
@@ -87,7 +97,12 @@ sys.exit(code)
             if 'uses' in step:
                 self.assertEqual(step['uses'], 'dart-lang/setup-dart@v1')
                 self.assertEqual(step['with']['sdk'], '${{ inputs.dart-version }}')
-                subprocess.run(['setup-sdk'], env=self.env, check=True, timeout=10)
+                sdk_env = {**self.env, 'INPUT_PROBLEM-MATCHER': str(
+                    step.get('with', {}).get('problem-matcher', 'true')).lower()}
+                result = subprocess.run(['setup-sdk'], env=sdk_env, capture_output=True,
+                                        text=True, timeout=10)
+                if result.returncode:
+                    return result
                 continue
             env = dict(self.env)
             for key, value in step.get('env', {}).items():
@@ -128,6 +143,16 @@ sys.exit(code)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(self.events('skip'), [[package] for package in ORDER[:6]])
         self.assertEqual(self.events('publish'), [[package] for package in ORDER[6:]])
+
+    def test_nested_sdk_matcher_failure_stops_before_any_package_upload(self):
+        self.action['runs']['steps'][0]['with'].pop('problem-matcher', None)
+        result = self.run_release()
+        self.assertEqual(result.returncode, 66)
+        self.assertEqual(self.events('credential'), [[0]])
+        self.assertEqual(self.events('matcher'), [
+            [str(self.action_path / 'dart-analyzer.json')]])
+        self.assertEqual(self.events('resolve'), [])
+        self.assertEqual(self.events('publish'), [])
 
     def test_resolution_failure_stops_before_uploading_or_starting_next_package(self):
         self.env['FAIL_RESOLVE'] = 'zstandard_web'
