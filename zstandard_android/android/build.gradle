@@ -11,6 +11,9 @@ rootProject.allprojects {
 }
 
 apply plugin: "com.android.library"
+apply from: "resolve_zstd.gradle"
+
+def zstdRoot = resolveZstdRoot(rootProject.projectDir)
 
 android {
     if (project.android.hasProperty("namespace")) {
@@ -55,7 +58,8 @@ android {
         externalNativeBuild {
             cmake {
                 cppFlags "-fmax-page-size=16384"
-                arguments "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"
+                arguments "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON",
+                    "-DZSTD_ROOT=${zstdRoot.path.replace('\\', '/')}"
             }
         }
     }

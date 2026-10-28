@@ -30,6 +30,10 @@
 
 ## Unreleased
 
+- Fix Android builds from the Pub cache, including Windows hosts, by resolving
+  `zstandard_native` from the consuming application's package configuration and
+  passing its source directory to CMake. Support relative and escaped file URIs
+  and Pub workspaces without selecting a different cached dependency version.
 - Added bounded decompression (256 MiB default) with support for unknown-size
   and concatenated frames across native, Web, CLI, and extension APIs.
 - Moved native work to byte-safe isolates and WebAssembly work to a dedicated

@@ -1,0 +1,45 @@
+import groovy.json.JsonSlurper
+import org.gradle.api.GradleException
+
+// Start at the consuming Android project, not at this plugin in the Pub cache.
+// Walking upwards also supports Pub workspaces and Flutter's .android projects.
+ext.resolveZstdRoot = { File consumerDirectory ->
+    File directory = consumerDirectory.canonicalFile
+    File packageConfig = null
+    while (directory != null) {
+        File candidate = new File(directory, ".dart_tool/package_config.json")
+        if (candidate.isFile()) {
+            packageConfig = candidate
+            break
+        }
+        directory = directory.parentFile
+    }
+    if (packageConfig == null) {
+        throw new GradleException(
+            "zstandard_android: package_config.json not found above ${consumerDirectory}. Run flutter pub get in the application.")
+    }
+
+    def config = new JsonSlurper().parse(packageConfig, "UTF-8")
+    def nativePackage = config.packages.find { it.name == "zstandard_native" }
+    if (!(nativePackage?.rootUri instanceof String) || nativePackage.rootUri.isEmpty()) {
+        throw new GradleException(
+            "zstandard_android: zstandard_native is missing from ${packageConfig}. Run flutter pub get in the application.")
+    }
+
+    // Pub rootUri values are relative to package_config.json or absolute file
+    // URIs. Java handles URI escapes and Windows drive letters on the build host.
+    File nativeDirectory
+    try {
+        nativeDirectory = new File(packageConfig.toURI().resolve(nativePackage.rootUri))
+    } catch (IllegalArgumentException error) {
+        throw new GradleException(
+            "zstandard_android: invalid zstandard_native rootUri in ${packageConfig}.", error)
+    }
+    File zstdRoot = new File(nativeDirectory, "src/zstd").canonicalFile
+    if (!new File(zstdRoot, "zstd.h").isFile() ||
+        !["common", "compress", "decompress"].every { new File(zstdRoot, it).isDirectory() }) {
+        throw new GradleException(
+            "zstandard_android: zstd source not found at ${zstdRoot}, selected by ${packageConfig}. Run flutter pub get and verify zstandard_native.")
+    }
+    return zstdRoot
+}
