@@ -30,6 +30,9 @@
 
 ## Unreleased
 
+- Keep Android CMake staging in the consumer's `android/.cxx/zstd` directory
+  and shorten object paths to avoid Ninja mkdir failures on Windows when the
+  plugin is installed from a Git dependency with a full commit hash.
 - Fix Android builds from the Pub cache, including Windows hosts, by resolving
   `zstandard_native` from the consuming application's package configuration and
   passing its source directory to CMake. Support relative and escaped file URIs

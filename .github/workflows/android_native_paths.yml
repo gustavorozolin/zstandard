@@ -1,0 +1,43 @@
+name: Android native paths
+
+on:
+  push:
+    branches: ['codex/**', develop]
+    paths:
+      - 'zstandard_android/android/**'
+      - 'zstandard_android/zstd_build/**'
+      - 'scripts/tests/test_android_native_paths.py'
+      - '.github/workflows/android_native_paths.yml'
+  pull_request:
+    paths:
+      - 'zstandard_android/android/**'
+      - 'zstandard_android/zstd_build/**'
+      - 'scripts/tests/test_android_native_paths.py'
+      - '.github/workflows/android_native_paths.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  windows-native-build:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14'
+      - uses: android-actions/setup-android@v4
+      - name: Install the reported Android toolchain
+        run: sdkmanager 'ndk;27.0.12077973' 'cmake;3.22.1' 'platforms;android-34' 'build-tools;34.0.0'
+      - name: Build from a long Git-cache path
+        run: python scripts/tests/test_android_native_paths.py

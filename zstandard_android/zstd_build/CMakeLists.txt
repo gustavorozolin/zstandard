@@ -5,6 +5,13 @@ cmake_minimum_required(VERSION 3.10)
 
 project(zstandard_android_library VERSION 0.0.1 LANGUAGES C)
 
+# Android is the target even when Ninja runs on Windows. Bound object paths
+# explicitly so CMake hashes long external Pub-cache paths before MAX_PATH.
+# Preserve a stricter limit supplied by the consumer.
+if(NOT DEFINED CMAKE_OBJECT_PATH_MAX OR CMAKE_OBJECT_PATH_MAX GREATER 240)
+  set(CMAKE_OBJECT_PATH_MAX 240)
+endif()
+
 # Gradle passes the exact native dependency selected by the consuming app.
 # Keep a repository-local fallback for direct CMake builds only; never replace
 # an explicit root with a different dependency or an arbitrary cached version.

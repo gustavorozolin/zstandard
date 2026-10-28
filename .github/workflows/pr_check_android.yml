@@ -105,10 +105,10 @@ jobs:
         working-directory: zstandard_android
         run: |
           flutter clean
-          # The plugin CMake cache is kept outside Flutter's build directory
+          # CMake staging is kept outside Flutter's build directory
           # on persistent self-hosted runners. Remove it so workspace and
           # pub-cache matrix entries cannot reuse a previous native source.
-          rm -rf android/.cxx
+          rm -rf android/.cxx "${{ matrix.example }}/android/.cxx/zstd"
           flutter pub get
 
       - name: Clean and get example dependencies

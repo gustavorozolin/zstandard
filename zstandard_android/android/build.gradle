@@ -35,6 +35,11 @@ android {
         cmake {
             path = "../zstd_build/CMakeLists.txt"
 
+            // Pub's Git cache includes a full commit hash. Keeping .cxx there
+            // makes Ninja's object paths exceed Windows MAX_PATH. Use a short
+            // consumer-owned location outside build/, as required by AGP.
+            buildStagingDirectory = new File(rootProject.projectDir, ".cxx/zstd")
+
             // The default CMake version for the Android Gradle Plugin is 3.10.2.
             // https://developer.android.com/studio/projects/install-ndk#vanilla_cmake
             //

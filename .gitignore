@@ -22,6 +22,7 @@ zstandard_cli/zstd/
 **/ios/Flutter/flutter_export_environment.sh
 **/ios/Flutter/ephemeral/
 **/android/local.properties
+**/android/.cxx/
 **/android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
 **/macos/Flutter/Generated*
 **/macos/Flutter/ephemeral/
