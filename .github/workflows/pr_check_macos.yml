@@ -27,6 +27,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Verify versioned SwiftPM dependency and release FFI exports
+        run: python3 -m unittest discover -s scripts/tests -p test_swiftpm_native_dependency.py -v
+
       - uses: ./.github/actions/preserve-flutter-project-files
         with:
           package: zstandard_macos

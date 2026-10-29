@@ -57,6 +57,18 @@ cd zstandard_macos/example
 flutter test integration_test/ -d macos
 ```
 
+To check the shared SwiftPM package as a versioned dependency, run from the
+repository root:
+
+```bash
+python3 -m unittest discover -s scripts/tests -p test_swiftpm_native_dependency.py -v
+```
+
+This test resolves a temporary Git tag, builds a release executable with unused
+code stripping enabled, and looks up the Dart FFI symbols dynamically before
+checking compression and both single-call and streaming decompression. A local
+path dependency alone does not catch SwiftPM's restrictions on unsafe build flags.
+
 **Web** (Chrome + ChromeDriver):
 
 ```bash
